@@ -77,6 +77,8 @@ SIMPLY_SORTED = ['units']
 
 
 def get_alt_src_langs(request, user, translation_project):
+    from pootle_language.models import Language
+    
     language = translation_project.language
     project = translation_project.project
     source_language = project.source_language
@@ -85,8 +87,13 @@ def get_alt_src_langs(request, user, translation_project):
             id__in=(language.id, source_language.id)
         ).filter(translationproject__project=project)
 
-    if not user.alt_src_langs.count():
-        from pootle_language.models import Language
+    project_alt_source = Language.objects.filter(
+                id = source_language.id
+            )
+
+    langs |= project_alt_source
+
+    if not user.alt_src_langs.count():        
         accept = request.META.get('HTTP_ACCEPT_LANGUAGE', '')
 
         for accept_lang, unused in parse_accept_lang_header(accept):

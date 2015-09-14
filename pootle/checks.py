@@ -7,6 +7,7 @@
 # or later license. See the LICENSE file for a copy of the license and the
 # AUTHORS file for copyright and authorship information.
 
+from django.db import OperationalError, ProgrammingError
 from django.core import checks
 from django.utils.translation import ugettext as _
 
@@ -42,6 +43,30 @@ def _version_to_string(version, significance=None):
     if significance is not None:
         version = version[significance:]
     return '.'.join(str(n) for n in version)
+
+
+@checks.register()
+def check_duplicate_emails(app_configs=None, **kwargs):
+    from accounts.utils import get_duplicate_emails
+    errors = []
+    try:
+        if len(get_duplicate_emails()):
+            errors.append(
+                checks.Warning(
+                    _("There are user accounts with duplicate emails. This "
+                      "will not be allowed in Pootle 2.8."),
+                    hint=_("Try using 'pootle find_duplicate_emails', and "
+                           "then update user emails with 'pootle "
+                           "update_user_email username email'. You might also "
+                           "want to consider using pootle merge_user or "
+                           "purge_user commands"),
+                    id="pootle.W017"
+                )
+            )
+    except (OperationalError, ProgrammingError):
+        # no accounts set up - most likely in a test
+        pass
+    return errors
 
 
 @checks.register()
@@ -94,6 +119,17 @@ def check_redis(app_configs=None, **kwargs):
             id="pootle.C001",
         ))
     else:
+        redis_version = tuple(int(x) for x
+                              in (queue.connection
+                                       .info()["redis_version"].split(".")))
+        if redis_version < REDIS_MINIMUM_REQUIRED_VERSION:
+            errors.append(checks.Critical(
+                _("Your version of Redis is too old."),
+                hint=_("Update your system's Redis server package to at least "
+                       "version %s" % str(REDIS_MINIMUM_REQUIRED_VERSION)),
+                id="pootle.C007",
+            ))
+
         if len(queue.connection.smembers(Worker.redis_workers_keys)) == 0:
             # We need to check we're not running manage.py rqworker right now..
             import sys
@@ -103,14 +139,6 @@ def check_redis(app_configs=None, **kwargs):
                     hint=_("Run new workers with manage.py rqworker"),
                     id="pootle.W001",
                 ))
-
-        redis_version = queue.connection.info()["redis_version"].split(".")
-        if tuple(int(x) for x in redis_version) < REDIS_MINIMUM_REQUIRED_VERSION:
-            errors.append(checks.Warning(
-                _("Your version of Redis is too old."),
-                hint=_("Update your system's Redis server package"),
-                id="pootle.W002",
-            ))
 
     return errors
 
@@ -275,4 +303,27 @@ def check_db_transaction_on_commit(app_configs=None, **kwargs):
                    "from transaction_hooks.backends."),
             id="pootle.C006",
         ))
+    return errors
+
+
+@checks.register()
+def check_email_server_is_alive(app_configs=None, **kwargs):
+    from django.conf import settings
+
+    errors = []
+    if settings.POOTLE_SIGNUP_ENABLED or settings.POOTLE_CONTACT_ENABLED:
+        from django.core.mail import get_connection
+
+        connection = get_connection()
+        try:
+            connection.open()
+        except Exception:
+            errors.append(checks.Warning(
+                _("Email server is not available."),
+                hint=_("Review your email settings and make sure your email "
+                       "server is working."),
+                id="pootle.W004",
+            ))
+        else:
+            connection.close()
     return errors

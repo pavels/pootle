@@ -89,6 +89,8 @@ PTL.editor = {
     this.ctxStep= 1;
     this.preventNavigation = false;
 
+    this.isUnitDirty = false;
+
     this.isLoading = true;
     this.showActivity();
 
@@ -141,15 +143,17 @@ PTL.editor = {
 
     /* State changes */
     $(document).on('input', '.js-translation-area',
-                   this.onTextareaChange.bind(this));
+                   (e) => this.onTextareaChange(e));
     $(document).on('change', 'input.fuzzycheck',
-                   this.onStateChange.bind(this));
+                   () => this.onStateChange());
     $(document).on('click', 'input.fuzzycheck',
-                   this.onStateClick.bind(this));
+                   () => this.onStateClick());
+    $(document).on('input', '#id_translator_comment',
+                   () => this.handleTranslationChange());
 
     /* Suggest / submit */
     $(document).on('click', '.switch-suggest-mode a',
-                   this.toggleSuggestMode.bind(this));
+                   (e) => this.toggleSuggestMode(e));
 
     /* Update focus when appropriate */
     $(document).on('focus', '.focusthis', function (e) {
@@ -163,7 +167,7 @@ PTL.editor = {
     });
 
     /* Write TM results, special chars... into the currently focused element */
-    $(document).on('click', '.js-editor-copytext', this.copyText.bind(this));
+    $(document).on('click', '.js-editor-copytext', (e) => this.copyText(e));
 
     /* Copy translator comment */
     $(document).on('click', '.js-editor-copy-comment', (e) => {
@@ -181,15 +185,13 @@ PTL.editor = {
     });
 
     /* Editor navigation/submission */
-    $(document).on('editor_ready', 'table.translate-table', this.ready);
-    $(document).on('noResults', 'table.translate-table', this.noResults);
     $(document).on('mouseup', 'tr.view-row, tr.ctx-row', this.gotoUnit);
-    $(document).on('keypress', '.js-unit-index', this.gotoIndex.bind(this));
+    $(document).on('keypress', '.js-unit-index', (e) => this.gotoIndex(e));
     $(document).on('dblclick click', '.js-unit-index', this.unitIndex);
     $(document).on('click', 'input.submit', this.submit);
     $(document).on('click', 'input.suggest', this.suggest);
-    $(document).on('click', '#js-nav-prev', this.gotoPrev.bind(this));
-    $(document).on('click', '#js-nav-next', this.gotoNext.bind(this));
+    $(document).on('click', '#js-nav-prev', () => this.gotoPrev());
+    $(document).on('click', '#js-nav-next', () => this.gotoNext());
     $(document).on('click', '.js-suggestion-reject', this.rejectSuggestion);
     $(document).on('click', '.js-suggestion-accept', this.acceptSuggestion);
     $(document).on('click', '#js-toggle-timeline', this.toggleTimeline);
@@ -198,7 +200,7 @@ PTL.editor = {
     /* Filtering */
     $(document).on('change', '#js-filter-status', this.filterStatus);
     $(document).on('change', '#js-filter-checks', this.filterChecks);
-    $(document).on('change', '#js-filter-sort', this.filterSort.bind(this));
+    $(document).on('change', '#js-filter-sort', () => this.filterSort());
     $(document).on('click', '.js-more-ctx', function () {
       PTL.editor.moreContext(false);
     });
@@ -232,6 +234,15 @@ PTL.editor = {
       autosize.update(document.querySelector('.js-translation-area'));
     });
 
+    /* */
+    window.addEventListener('beforeunload', (e) => {
+      if (PTL.editor.isUnitDirty) {
+        e.returnValue = gettext(
+          'You have unsaved changes in this unit. Navigating away will discard those changes.'
+        );
+      }
+    });
+
     /* Bind hotkeys */
     shortcut.add('ctrl+return', function () {
       if (PTL.editor.isSuggestMode()) {
@@ -240,14 +251,14 @@ PTL.editor = {
         $('input.submit').trigger('click');
       }
     });
-    shortcut.add('ctrl+space', this.toggleState.bind(this));
-    shortcut.add('ctrl+shift+space', this.toggleSuggestMode.bind(this));
+    shortcut.add('ctrl+space', () => this.toggleState());
+    shortcut.add('ctrl+shift+space', (e) => this.toggleSuggestMode(e));
 
-    shortcut.add('ctrl+up', this.gotoPrev.bind(this));
-    shortcut.add('ctrl+,', this.gotoPrev.bind(this));
+    shortcut.add('ctrl+up', () => this.gotoPrev());
+    shortcut.add('ctrl+,', () => this.gotoPrev());
 
-    shortcut.add('ctrl+down', this.gotoNext.bind(this, false));
-    shortcut.add('ctrl+.', this.gotoNext.bind(this, false));
+    shortcut.add('ctrl+down', () => this.gotoNext({isSubmission: false}));
+    shortcut.add('ctrl+.', () => this.gotoNext({isSubmission: false}));
 
     if (navigator.platform.toUpperCase().indexOf('MAC') >= 0) {
       // Optimize string join with '<br/>' as separator
@@ -461,9 +472,9 @@ PTL.editor = {
 
   /* Stuff to be done when the editor is ready  */
   ready: function () {
-    var currentUnit = PTL.editor.units.getCurrent();
+    var currentUnit = this.units.getCurrent();
     if (currentUnit.get('isObsolete')) {
-      PTL.editor.displayObsoleteMsg();
+      this.displayObsoleteMsg();
     }
 
     autosize(document.querySelector('textarea.expanding'));
@@ -479,43 +490,56 @@ PTL.editor = {
       firstArea.focus();
     }
 
-    PTL.editor.settings.targetLang = PTL.editor.normalizeCode(
+    this.settings.targetLang = PTL.editor.normalizeCode(
       $('.js-translation-area').attr('lang')
     );
 
     const $devComments = $('.js-developer-comments');
     $devComments.html(linkHashtags($devComments.html()));
 
-    PTL.editor.hlSearch();
+    this.hlSearch();
 
-    if (PTL.editor.settings.tmUrl !== '') {
-      PTL.editor.getTMUnits();
+    if (this.settings.tmUrl !== '') {
+      this.getTMUnits();
     }
 
-    if (PTL.editor.tmData !== null) {
-      var tmContent = PTL.editor.getTMUnitsContent(PTL.editor.tmData);
+    if (this.tmData !== null) {
+      var tmContent = this.getTMUnitsContent(PTL.editor.tmData);
       $('#extras-container').append(tmContent);
     }
 
     // All is ready, let's call the ready functions of the MT backends
     $("table.translate-table").trigger("mt_ready");
 
-    PTL.editor.keepState = false;
-    PTL.editor.isLoading = false;
-    PTL.editor.hideActivity();
-    PTL.editor.updateExportLink();
+    this.isUnitDirty = false;
+    this.keepState = false;
+    this.isLoading = false;
+    this.hideActivity();
+    this.updateExportLink();
     helpers.updateRelativeDates();
 
     // clear any pending 'Loading...' indicator timer
     // as ajaxStop() is not fired in IE properly
     // at initial page load (?!)
-    clearTimeout(PTL.editor.delayedActivityTimer);
+    clearTimeout(this.delayedActivityTimer);
   },
 
   /* Things to do when no results are returned */
   noResults: function () {
     PTL.editor.displayMsg({body: gettext("No results.")});
-    PTL.editor.reDraw(false);
+    PTL.editor.reDraw();
+  },
+
+  canNavigate: function() {
+    if (this.isUnitDirty) {
+      return window.confirm(
+        gettext(
+          'You have unsaved changes in this unit. Navigating away will discard those changes.'
+        )
+      );
+    }
+
+    return true;
   },
 
 
@@ -744,7 +768,27 @@ PTL.editor = {
     $('input.fuzzycheck').blur().click();
   },
 
+  /* Updates unit textarea and input's `default*` values. */
+  updateUnitDefaultProperties: function () {
+    $('.js-translation-area').each(function () {
+      this.defaultValue = this.value;
+    });
+    var checkbox = $('#id_state')[0];
+    checkbox.defaultChecked = checkbox.checked;
+    this.handleTranslationChange();
+  },
+
+  /* Updates comment area's `defaultValue` value. */
+  updateCommentDefaultProperties: function () {
+    const comment = document.querySelector('#id_translator_comment');
+    comment.defaultValue = comment.value;
+    this.handleTranslationChange();
+  },
+
   handleTranslationChange: function () {
+    const comment = document.querySelector('#id_translator_comment');
+    const commentChanged = comment.value !== comment.defaultValue;
+
     var submit = $('.js-submit')[0],
         suggest = $('.js-suggest')[0],
         translations = $('.js-translation-area').get(),
@@ -774,6 +818,9 @@ PTL.editor = {
         suggestionExists = suggestions.indexOf(area.value) !== -1;
       }
     }
+
+    // Store dirty state for the current unit
+    this.isUnitDirty = areaChanged || stateChanged || commentChanged;
 
     if (submit !== undefined) {
       submit.disabled = !(stateChanged || areaChanged) || needsReview;
@@ -1195,17 +1242,16 @@ PTL.editor = {
 
   /* reDraws the translate table rows */
   reDraw: function (newTbody) {
-    var tTable = $("table.translate-table"),
-        where = $("tbody", tTable),
-        oldRows = $("tr", where);
+    const $where = $('.js-editor-body');
+    const $oldRows = $where.find('tr');
 
-    oldRows.remove();
+    $oldRows.remove();
 
-    if (newTbody !== false) {
-      where.append(newTbody);
+    if (newTbody !== undefined) {
+      $where.append(newTbody);
 
-      // We are ready, call the ready handlers
-      $(tTable).trigger("editor_ready");
+      // Call the post-render handlers
+      this.ready();
     }
   },
 
@@ -1322,7 +1368,7 @@ PTL.editor = {
             opts.success();
           }
         } else {
-          $("table.translate-table").trigger("noResults");
+          PTL.editor.noResults();
         }
       },
       error: PTL.editor.error
@@ -1442,12 +1488,7 @@ PTL.editor = {
 
     el.disabled = true;
 
-    // Update default value properties
-    $('.js-translation-area').each(function () {
-      this.defaultValue = this.value;
-    });
-    var checkbox = $('#id_state')[0];
-    checkbox.defaultChecked = checkbox.checked;
+    PTL.editor.updateUnitDefaultProperties();
 
     $.ajax({
       url: submitUrl,
@@ -1495,6 +1536,8 @@ PTL.editor = {
           efn: 'PTL.editor.error'
         };
 
+    PTL.editor.updateUnitDefaultProperties();
+
     // in suggest mode, do not send the fuzzy state flag
     // even if it is set in the form internally
     delete reqData.state;
@@ -1523,6 +1566,10 @@ PTL.editor = {
 
   /* Loads the previous unit */
   gotoPrev: function () {
+    if (!this.canNavigate()) {
+      return false;
+    }
+
     var newUnit = this.units.prev();
     if (newUnit) {
       var newHash = utils.updateHashPart('unit', newUnit.id);
@@ -1531,16 +1578,16 @@ PTL.editor = {
   },
 
   /* Loads the next unit */
-  gotoNext: function (isSubmission) {
-    if (isSubmission === undefined) {
-      isSubmission = true;
+  gotoNext: function (opts={isSubmission: true}) {
+    if (!this.canNavigate()) {
+      return false;
     }
 
     var newUnit = this.units.next();
     if (newUnit) {
       var newHash = utils.updateHashPart('unit', newUnit.id);
       $.history.load(newHash);
-    } else if (isSubmission) {
+    } else if (opts.isSubmission) {
       var backLink = $('.js-back-to-browser').attr('href');
       window.location.href = [backLink, 'finished'].join('?');
     }
@@ -1550,6 +1597,10 @@ PTL.editor = {
   /* Loads the editor with a specific unit */
   gotoUnit: function (e) {
     e.preventDefault();
+
+    if (!PTL.editor.canNavigate()) {
+      return false;
+    }
 
     // Ctrl + click / Alt + click / Cmd + click / Middle click opens a new tab
     if (e.ctrlKey || e.altKey || e.metaKey || e.which === 2) {
@@ -1637,6 +1688,10 @@ PTL.editor = {
     if (PTL.editor.preventNavigation) {
       return;
     }
+    if (!PTL.editor.canNavigate()) {
+      return false;
+    }
+
     var filterChecks = $('#js-filter-checks').val();
 
     if (filterChecks !== 'none') {
@@ -1712,6 +1767,10 @@ PTL.editor = {
 
   /* Loads units based on filtering */
   filterStatus: function () {
+    if (!PTL.editor.canNavigate()) {
+      return false;
+    }
+
     // this function can be executed in different contexts,
     // so using the full selector here
     var $selected = $('#js-filter-status option:selected'),
@@ -1873,6 +1932,10 @@ PTL.editor = {
 
   /* Loads the search view */
   onSearch: function (searchText) {
+    if (!PTL.editor.canNavigate()) {
+      return false;
+    }
+
     var newHash;
 
     if (searchText) {
@@ -1890,6 +1953,8 @@ PTL.editor = {
    */
   comment: function (e) {
     e.preventDefault();
+
+    PTL.editor.updateCommentDefaultProperties();
 
     var url = $(this).attr('action'),
         reqData = $(this).serializeObject();
@@ -2115,12 +2180,14 @@ PTL.editor = {
     e.stopPropagation(); //we don't want to trigger a click on the text below
     var suggId = $(this).data("sugg-id"),
         element = $("#suggestion-" + suggId),
-        unit = PTL.editor.units.getCurrent(),
-        url = l(['/xhr/units/', unit.id,
-                 '/suggestions/', suggId, '/reject/'].join(''));
+        unit = PTL.editor.units.getCurrent();
 
-    $.post(url, {'reject': 1},
-      function (data) {
+    const url = l(`/xhr/units/${unit.id}/suggestions/${suggId}/`);
+
+    $.ajax({
+      url: url,
+      type: 'DELETE',
+      success: (data) => {
         if (data.user_score) {
           score.set(data.user_score);
         }
@@ -2133,7 +2200,10 @@ PTL.editor = {
             PTL.editor.gotoNext();
           }
         });
-      }, "json");
+        $('.js-comment-first').fadeOut(200);
+      },
+      error: PTL.editor.error,
+    });
   },
 
 
@@ -2143,13 +2213,15 @@ PTL.editor = {
     var suggId = $(this).data("sugg-id"),
         element = $("#suggestion-" + suggId),
         unit = PTL.editor.units.getCurrent(),
-        url = l(['/xhr/units/', unit.id,
-                 '/suggestions/', suggId, '/accept/'].join('')),
         skipToNext = skipToNext || false,
         translations;
 
-    $.post(url, {'accept': 1},
-      function (data) {
+    const url = l(`/xhr/units/${unit.id}/suggestions/${suggId}/`);
+
+    $.ajax({
+      url: url,
+      type: 'POST',
+      success: (data) => {
         // Update target textareas
         $.each(data.newtargets, function (i, target) {
           $("#id_target_f_" + i).val(target).focus();
@@ -2189,7 +2261,10 @@ PTL.editor = {
             PTL.editor.gotoNext();
           }
         });
-      }, "json");
+      },
+      error: PTL.editor.error,
+    });
+
   },
 
   /* Mutes or unmutes a quality check marking it as false positive or not */

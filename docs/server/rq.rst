@@ -80,7 +80,7 @@ To push failed jobs back into the queue we simply run the
 Dirty statistics
 ----------------
 
-When we count stats with :djadmin:`refresh_stats_rq` Pootle will track a dirty
+When we count stats with :djadmin:`refresh_stats` Pootle will track a dirty
 count so that it knows when the counts for that part of the tree is complete.
 
 When debugging a situation where the counts aren't completing it is helpful to
@@ -95,3 +95,11 @@ Or to get a complete list for the server, including the scores:
 .. code-block:: bash
 
    $ redis-cli -n 2 zrange "pootle:dirty:treeitems" 0 -1 withscores
+
+The banner that shows that stats are being calculated is displayed when
+``pootle:refresh:stats`` is present.  Only remove this if you are confident
+that all else is good and that the stats are fine or to be generated again.
+
+.. code-block:: bash
+
+   $ redis-cli -n 2 del pootle:refresh:stats

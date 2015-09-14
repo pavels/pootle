@@ -847,6 +847,20 @@ class Unit(models.Model, base.TranslationUnit):
     def get_active_qualitychecks(self):
         return self.qualitycheck_set.filter(false_positive=False)
 
+##################### Related Submissions ########################
+
+    def get_edits(self):
+        return self.submission_set.get_unit_edits()
+
+    def get_comments(self):
+        return self.submission_set.get_unit_comments()
+
+    def get_state_changes(self):
+        return self.submission_set.get_unit_state_changes()
+
+    def get_suggestion_reviews(self):
+        return self.submission_set.get_unit_suggestion_reviews()
+
 ##################### TranslationUnit ############################
 
     def update_tmserver(self):
@@ -1527,16 +1541,18 @@ class Store(models.Model, CachedTreeItem, base.TranslationStore):
             old_state = self.state
             self.state = LOCKED
             self.save()
+            keys = []
             try:
                 revision = Revision.incr()
                 for index, unit in enumerate(store.units):
+                    # Dont add duplicates
+                    if unit.getid() in keys:
+                        logging.warning(u'Unable to add duplicate unit: %s'
+                                        % unit.getid())
+                        continue
+                    keys.append(unit.getid())
                     if unit.istranslatable():
-                        try:
-                            self.addunit(unit, index, revision=revision)
-                        except IntegrityError as e:
-                            logging.warning(u'Data integrity error while '
-                                            u'importing unit %s:\n%s',
-                                            unit.getid(), e)
+                        self.addunit(unit, index, revision=revision)
             except:
                 # Something broke, delete any units that got created
                 # and return store state to its original value

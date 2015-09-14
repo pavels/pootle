@@ -39,6 +39,12 @@ def nobody(db):
 
 
 @pytest.fixture
+def trans_nobody(transactional_db):
+    """Require the default anonymous user for use in a transactional test."""
+    return _require_user('nobody', 'any anonymous user')
+
+
+@pytest.fixture
 def default(transactional_db):
     """Require the default authenticated user."""
     return _require_user('default', 'any authenticated user',
@@ -62,3 +68,30 @@ def admin(transactional_db):
 def member(db):
     """Require a member user."""
     return _require_user('member', 'Member')
+
+
+@pytest.fixture
+def trans_member(transactional_db):
+    """Require a member user."""
+    return _require_user('trans_member', 'Transactional member')
+
+
+@pytest.fixture
+def member_with_email(transactional_db):
+    """Require a member user."""
+    user = _require_user('member_with_email', 'Member with email')
+    user.email = "member_with_email@this.test"
+    user.save()
+    return user
+
+
+@pytest.fixture
+def member2(db):
+    """Require a member2 user."""
+    return _require_user('member2', 'Member2')
+
+
+@pytest.fixture
+def evil_member(transactional_db):
+    """Require a evil_member user."""
+    return _require_user('evil_member', 'Evil member')

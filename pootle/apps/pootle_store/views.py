@@ -11,7 +11,7 @@ from itertools import groupby
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.core.exceptions import ObjectDoesNotExist
+from django.core.exceptions import ObjectDoesNotExist, PermissionDenied
 from django.core.urlresolvers import reverse
 from django.db.models import Max, Q
 from django.http import Http404
@@ -33,7 +33,7 @@ from pootle.core.decorators import (get_path_obj, get_resource,
 from pootle.core.exceptions import Http400
 from pootle.core.http import JsonResponse, JsonResponseBadRequest
 from pootle_app.models.directory import Directory
-from pootle_app.models.permissions import check_user_permission
+from pootle_app.models.permissions import check_permission, check_user_permission
 from pootle_misc.checks import get_category_id, check_names
 from pootle_misc.forms import make_search_form
 from pootle_misc.util import ajax_required, to_int, get_date_interval
@@ -990,28 +990,42 @@ def suggest(request, unit):
 
 
 @ajax_required
-@get_unit_context('review')
+@require_http_methods(['POST', 'DELETE'])
+def manage_suggestion(request, uid, sugg_id):
+    """Dispatches the suggestion action according to the HTTP verb."""
+    if request.method == 'DELETE':
+        return reject_suggestion(request, uid, sugg_id)
+    elif request.method == 'POST':
+        return accept_suggestion(request, uid, sugg_id)
+
+
+@get_unit_context()
 def reject_suggestion(request, unit, suggid):
     json = {
         'udbid': unit.id,
         'sugid': suggid,
     }
 
-    if request.POST.get('reject'):
-        try:
-            sugg = unit.suggestion_set.get(id=suggid)
-        except ObjectDoesNotExist:
-            raise Http404
+    try:
+        sugg = unit.suggestion_set.get(id=suggid)
+    except ObjectDoesNotExist:
+        raise Http404
 
-        unit.reject_suggestion(sugg, request.translation_project,
-                               request.profile)
+    # In order to be able to reject a suggestion, users have to either:
+    # 1. Have `review` rights, or
+    # 2. Be the author of the suggestion being rejected
+    if (not check_permission('review', request) and
+        (request.user.is_anonymous() or request.user != sugg.user)):
+        raise PermissionDenied(_('Insufficient rights to access review mode.'))
 
-        json['user_score'] = request.profile.public_score
+    unit.reject_suggestion(sugg, request.translation_project,
+                           request.profile)
+
+    json['user_score'] = request.profile.public_score
 
     return JsonResponse(json)
 
 
-@ajax_required
 @get_unit_context('review')
 def accept_suggestion(request, unit, suggid):
     json = {
@@ -1019,25 +1033,24 @@ def accept_suggestion(request, unit, suggid):
         'sugid': suggid,
     }
 
-    if request.POST.get('accept'):
-        try:
-            suggestion = unit.suggestion_set.get(id=suggid)
-        except ObjectDoesNotExist:
-            raise Http404
+    try:
+        suggestion = unit.suggestion_set.get(id=suggid)
+    except ObjectDoesNotExist:
+        raise Http404
 
-        unit.accept_suggestion(suggestion, request.translation_project,
-                               request.profile)
+    unit.accept_suggestion(suggestion, request.translation_project,
+                           request.profile)
 
-        json['user_score'] = request.profile.public_score
-        json['newtargets'] = [highlight_whitespace(target)
-                              for target in unit.target.strings]
-        json['newdiffs'] = {}
-        for sugg in unit.get_suggestions():
-            json['newdiffs'][sugg.id] = \
-                    [highlight_diffs(unit.target.strings[i], target)
-                     for i, target in enumerate(sugg.target.strings)]
+    json['user_score'] = request.profile.public_score
+    json['newtargets'] = [highlight_whitespace(target)
+                          for target in unit.target.strings]
+    json['newdiffs'] = {}
+    for sugg in unit.get_suggestions():
+        json['newdiffs'][sugg.id] = \
+                [highlight_diffs(unit.target.strings[i], target)
+                 for i, target in enumerate(sugg.target.strings)]
 
-        json['checks'] = _get_critical_checks_snippet(request, unit)
+    json['checks'] = _get_critical_checks_snippet(request, unit)
 
     return JsonResponse(json)
 

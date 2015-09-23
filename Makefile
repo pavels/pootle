@@ -53,12 +53,13 @@ pot:
 	@${SRC_DIR}/tools/createpootlepot
 
 get-translations:
-	ssh pootle.locamotion.org ". /var/www/sites/pootle/env/bin/activate; python /var/www/sites/pootle/src/manage.py sync_stores --verbosity=3 --project=pootle"
+	ssh pootle.locamotion.org ". /var/www/sites/pootle/env/bin/activate; python /var/www/sites/pootle/src/manage.py sync_stores --verbosity=1 --project=pootle"
 	rsync -az --delete --exclude="LINGUAS" --exclude=".translation_index" --exclude=pootle-terminology.po pootle.locamotion.org:/var/www/sites/pootle/translations/pootle/ ${SRC_DIR}/locale
+	for po in $$(find ${SRC_DIR}/locale -name "*.po"); do msgcat $$po > $$po.2 && mv $$po.2 $$po; done
 
 put-translations:
 	rsync -azv --progress --exclude="*~" --exclude="*.mo" --exclude="LC_MESSAGES" --exclude=unicode --exclude="LINGUAS" --exclude=".translation_index" --exclude=pootle-terminology.po ${SRC_DIR}/locale/ pootle.locamotion.org:/var/www/sites/pootle/translations/pootle/
-	@echo "Perform manual update_stores"
+	ssh pootle.locamotion.org ". /var/www/sites/pootle/env/bin/activate; python /var/www/sites/pootle/src/manage.py update_stores --verbosity=1 --project=pootle"
 
 linguas:
 	@${SRC_DIR}/tools/make-LINGUAS.sh 80 > ${SRC_DIR}/locale/LINGUAS

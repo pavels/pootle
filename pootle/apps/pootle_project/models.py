@@ -388,7 +388,7 @@ class Project(models.Model, CachedTreeItem, ProjectURLMixin):
     def clean(self):
         if self.code in RESERVED_PROJECT_CODES:
             raise ValidationError(
-                _('"%s" cannot be used as a project code' % (self.code,))
+                _('"%s" cannot be used as a project code', self.code)
             )
 
     ### TreeItem
@@ -400,6 +400,10 @@ class Project(models.Model, CachedTreeItem, ProjectURLMixin):
         return self.directory.pootle_path
 
     ### /TreeItem
+
+    def get_stats_for_user(self, user):
+        self.set_children(self.get_children_for_user(user))
+        return self.get_stats()
 
     def get_children_for_user(self, user):
         """Returns children translation projects for a specific `user`."""
@@ -512,6 +516,9 @@ class ProjectResource(VirtualResource, ProjectURLMixin):
 
     def get_children_for_user(self, user):
         return self.children
+
+    def get_stats_for_user(self, user):
+        return self.get_stats()
 
 
 class ProjectSet(VirtualResource, ProjectURLMixin):

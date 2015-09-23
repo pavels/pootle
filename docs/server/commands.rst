@@ -69,9 +69,6 @@ for the process to terminate:
 
     $ pootle refresh_stats --no-rq
 
-.. warning:: Do not ``pootle runserver --no-rq`` on a production server as this
-    will result in very poor performance.
-
 It is *not* generally safe to run commands in this mode if you have RQ workers
 active at the same time, as there is a risk that they conflict with other jobs
 dispatched to the workers.
@@ -499,8 +496,7 @@ Available options:
   Default: ``~/.pootle/pootle.conf``.
 
 :option:`--db`
-
-.. versionadded:: 2.7.1
+  .. versionadded:: 2.7.1
 
   The database backend that you are using
 
@@ -508,8 +504,7 @@ Available options:
   Available options: ``sqlite``, ``mysql``, ``postgresql``.
 
 :option:`--db-name`
-
-.. versionadded:: 2.7.1
+  .. versionadded:: 2.7.1
 
   The database name or path to database file if you are using sqlite.
 
@@ -517,24 +512,21 @@ Available options:
   Default for mysql/postgresql: ``pootledb``.
 
 :option:`--db-user`
-
-.. versionadded:: 2.7.1
+  .. versionadded:: 2.7.1
 
   Name of the database user. Not used with sqlite.
 
   Default: ``pootle``.
 
 :option:`--db-host`
-
-.. versionadded:: 2.7.1
+  .. versionadded:: 2.7.1
 
   Database host to connect to. Not used with sqlite.
 
   Default: ``localhost``.
 
 :option:`--db-port`
-
-.. versionadded:: 2.7.1
+  .. versionadded:: 2.7.1
 
   Port to connect to database on. Defaults to database backend's default port.
   Not used with sqlite.
@@ -726,6 +718,7 @@ verify all users of your site.
 
     $ pootle verify_user username
 
+Available options:
 
 :option:`--all`
   Verify all users of the site

@@ -238,7 +238,7 @@ PTL.editor = {
     window.addEventListener('beforeunload', (e) => {
       if (PTL.editor.isUnitDirty) {
         e.returnValue = gettext(
-          'You have unsaved changes in this unit. Navigating away will discard those changes.'
+          'You have unsaved changes in this string. Navigating away will discard those changes.'
         );
       }
     });
@@ -534,7 +534,7 @@ PTL.editor = {
     if (this.isUnitDirty) {
       return window.confirm(
         gettext(
-          'You have unsaved changes in this unit. Navigating away will discard those changes.'
+          'You have unsaved changes in this string. Navigating away will discard those changes.'
         )
       );
     }
@@ -787,7 +787,8 @@ PTL.editor = {
 
   handleTranslationChange: function () {
     const comment = document.querySelector('#id_translator_comment');
-    const commentChanged = comment.value !== comment.defaultValue;
+    const commentChanged = comment !== null ?
+                           comment.value !== comment.defaultValue : false;
 
     var submit = $('.js-submit')[0],
         suggest = $('.js-suggest')[0],
@@ -1062,7 +1063,7 @@ PTL.editor = {
   },
 
   displayObsoleteMsg: function () {
-    var msgText = gettext('This unit no longer exists.'),
+    var msgText = gettext('This string no longer exists.'),
         backMsg = gettext('Go back to browsing'),
         backLink = $('.js-back-to-browser').attr('href'),
         reloadMsg = gettext('Reload page'),
@@ -1462,6 +1463,8 @@ PTL.editor = {
           efn: 'PTL.editor.error'
         };
 
+    PTL.editor.updateUnitDefaultProperties();
+
     // Check if the string being submitted is already in the set of
     // suggestions
     // FIXME: this is LAME, I wanna die: we need to use proper models!!
@@ -1487,8 +1490,6 @@ PTL.editor = {
              captchaCallbacks);
 
     el.disabled = true;
-
-    PTL.editor.updateUnitDefaultProperties();
 
     $.ajax({
       url: submitUrl,

@@ -11,7 +11,10 @@ Installation
 .. toctree::
    :maxdepth: 2
 
+   requirements
    installation
+   mysql_installation
+   postgresql_installation
    web
 
 
@@ -42,3 +45,4 @@ Performance tuning and managing the server
    auth
    commands
    rq
+   backup

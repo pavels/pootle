@@ -217,7 +217,7 @@ setup(
 
     author="Translate",
     author_email="dev@translate.org.za",
-    license="GNU General Public License (GPL)",
+    license="GNU General Public License 3 or later (GPLv3+)",
     url="http://pootle.translatehouse.org",
     download_url="https://github.com/translate/pootle/releases/tag/" + __version__,
 
@@ -232,7 +232,7 @@ setup(
         "Intended Audience :: Developers",
         "Intended Audience :: End Users/Desktop",
         "Intended Audience :: Information Technology",
-        "License :: OSI Approved :: GNU General Public License (GPL)",
+        "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
         "Operating System :: OS Independent",
         "Operating System :: Microsoft :: Windows",
         "Operating System :: Unix",

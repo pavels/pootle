@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Pootle 2.7.0\n"
 "Report-Msgid-Bugs-To: https://github.com/translate/pootle/issues/new\n"
-"POT-Creation-Date: 2015-09-07 16:55+0100\n"
+"POT-Creation-Date: 2015-09-22 16:16+0100\n"
 "PO-Revision-Date: 2015-01-05 07:39+0000\n"
 "Last-Translator: mahdikhobreh <mahdikhobreh@yahoo.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -118,7 +118,7 @@ msgstr ""
 
 #: static/js/admin/components/UserForm.js:52
 msgid ""
-"Note: when deleting a user their contributions to the site, eg comments, "
+"Note: when deleting a user their contributions to the site, e.g. comments, "
 "suggestions and translations, are attributed to the anonymous user (nobody)."
 msgstr ""
 
@@ -136,6 +136,7 @@ msgstr ""
 #: static/js/auth/components/SignInForm.js:104
 #: static/js/auth/components/SignUpForm.js:100
 #: static/js/auth/components/SocialVerification.js:94
+#: static/js/auth/components/PasswordResetForm.js:113
 msgid "Password"
 msgstr ""
 
@@ -201,7 +202,8 @@ msgid "Reports"
 msgstr ""
 
 #: static/js/auth/components/AccountActivation.js:33
-#, javascript-format
+#: static/js/auth/components/RequestPasswordResetSent.js:44
+#, python-format, javascript-format
 msgid "We have sent an email containing the special link to <span>%s</span>"
 msgstr ""
 
@@ -229,48 +231,48 @@ msgstr ""
 msgid "Your account is inactive because an administrator deactivated it."
 msgstr ""
 
-#: static/js/auth/components/AuthController.js:83
+#: static/js/auth/components/AuthController.js:85
 msgid "Sign In With..."
 msgstr ""
 
-#: static/js/auth/components/AuthController.js:83
+#: static/js/auth/components/AuthController.js:85
 #: static/js/auth/components/SignInForm.js:122
 #: static/js/auth/components/SocialVerification.js:112
 msgid "Sign In"
 msgstr ""
 
-#: static/js/auth/components/AuthController.js:90
+#: static/js/auth/components/AuthController.js:92
 msgid "Account Inactive"
 msgstr ""
 
-#: static/js/auth/components/AuthController.js:97
+#: static/js/auth/components/AuthController.js:99
 #: static/js/auth/components/SignUpForm.js:121
 msgid "Sign Up"
 msgstr ""
 
-#: static/js/auth/components/AuthController.js:104
+#: static/js/auth/components/AuthController.js:106
 msgid "Account Activation"
 msgstr ""
 
-#: static/js/auth/components/AuthController.js:111
+#: static/js/auth/components/AuthController.js:113
 msgid "Email Confirmation"
 msgstr ""
 
-#: static/js/auth/components/AuthController.js:118
-#: static/js/auth/components/AuthController.js:125
-#: static/js/auth/components/AuthController.js:132
+#: static/js/auth/components/AuthController.js:120
+#: static/js/auth/components/AuthController.js:127
+#: static/js/auth/components/AuthController.js:134
 msgid "Reset Your Password"
 msgstr ""
 
-#: static/js/auth/components/AuthController.js:139
+#: static/js/auth/components/AuthController.js:141
 msgid "Oops..."
 msgstr ""
 
-#: static/js/auth/components/AuthController.js:146
+#: static/js/auth/components/AuthController.js:148
 msgid "Social Verification"
 msgstr ""
 
-#: static/js/auth/components/AuthWindow.js:21
+#: static/js/auth/components/AuthWindow.js:29
 msgid "Contact Us"
 msgstr ""
 
@@ -306,7 +308,7 @@ msgid "After changing your password you will sign in automatically."
 msgstr ""
 
 #: static/js/auth/components/RequestPasswordResetProgress.js:25
-#, javascript-format
+#, python-format, javascript-format
 msgid "Sending email to %s..."
 msgstr ""
 
@@ -325,6 +327,7 @@ msgid "Resend Email"
 msgstr ""
 
 #: static/js/auth/components/SignInForm.js:83
+#: static/js/auth/components/RequestPasswordResetForm.js:120
 msgid "Sign up as a new user"
 msgstr ""
 
@@ -351,7 +354,7 @@ msgid "Sign in as an existing user"
 msgstr ""
 
 #: static/js/auth/components/SocialAuthError.js:31
-#, javascript-format
+#, python-format, javascript-format
 msgid "An error occurred while attempting to sign in via %s."
 msgstr ""
 
@@ -364,7 +367,7 @@ msgid "Try again"
 msgstr ""
 
 #: static/js/auth/components/SocialSignInForm.js:40
-#, javascript-format
+#, python-format, javascript-format
 msgid "Sign In With %s"
 msgstr ""
 
@@ -376,7 +379,7 @@ msgstr ""
 
 #: static/js/editor/app.js:241 static/js/editor/app.js:537
 msgid ""
-"You have unsaved changes in this unit. Navigating away will discard those "
+"You have unsaved changes in this string. Navigating away will discard those "
 "changes."
 msgstr ""
 
@@ -393,75 +396,75 @@ msgid ""
 msgstr ""
 
 #: static/js/editor/app.js:383
-#, fuzzy, javascript-format
+#, fuzzy, python-format, javascript-format
 msgid "%s's pending suggestions"
 msgstr "حدوداَ ٪ مانده"
 
 #: static/js/editor/app.js:386
-#, fuzzy, javascript-format
+#, fuzzy, python-format, javascript-format
 msgid "%s's accepted suggestions"
 msgstr "اظهارات ٪ قبول شده است "
 
 #: static/js/editor/app.js:389
-#, fuzzy, javascript-format
+#, fuzzy, python-format, javascript-format
 msgid "%s's rejected suggestions"
 msgstr "اظهارات ٪ مردود شده است"
 
 #: static/js/editor/app.js:392
-#, fuzzy, javascript-format
+#, fuzzy, python-format, javascript-format
 msgid "%s's submissions"
 msgstr "٪ ثبت شده"
 
 #: static/js/editor/app.js:396
-#, fuzzy, javascript-format
+#, fuzzy, python-format, javascript-format
 msgid "%s's overwritten submissions"
 msgstr "٪ دوباره ثبت شده"
 
-#: static/js/editor/app.js:529 static/js/editor/app.js:1740
+#: static/js/editor/app.js:529 static/js/editor/app.js:1741
 msgid "No results."
 msgstr "بدون نتیجه."
 
-#: static/js/editor/app.js:1042
+#: static/js/editor/app.js:1043
 msgid "Error while connecting to the server"
 msgstr "خطا در اتصال به سرور"
 
-#: static/js/editor/app.js:1046
+#: static/js/editor/app.js:1047
 msgid "Not found"
 msgstr ""
 
-#: static/js/editor/app.js:1048
+#: static/js/editor/app.js:1049
 msgid "Server error"
 msgstr "خطای سرور."
 
-#: static/js/editor/app.js:1050
+#: static/js/editor/app.js:1051
 msgid "The server seems down. Try again later."
 msgstr "سرور از کار افتاده است. زمانی دیگر تلاش کنید."
 
-#: static/js/editor/app.js:1057
+#: static/js/editor/app.js:1058
 msgid "Unknown error"
 msgstr "خطای ناشناخته"
 
-#: static/js/editor/app.js:1065
-msgid "This unit no longer exists."
+#: static/js/editor/app.js:1066
+msgid "This string no longer exists."
 msgstr ""
 
-#: static/js/editor/app.js:1066
+#: static/js/editor/app.js:1067
 msgid "Go back to browsing"
 msgstr ""
 
-#: static/js/editor/app.js:1068
+#: static/js/editor/app.js:1069
 msgid "Reload page"
 msgstr ""
 
-#: static/js/editor/app.js:2094
+#: static/js/editor/app.js:2095
 msgid "some anonymous user"
 msgstr ""
 
-#: static/js/editor/app.js:2096
+#: static/js/editor/app.js:2097
 msgid "someone"
 msgstr ""
 
-#: static/js/editor/app.js:2114 static/js/editor/app.js:2163
+#: static/js/editor/app.js:2115 static/js/editor/app.js:2164
 msgid "Similar translations"
 msgstr "برگردان‌های همسان"
 
@@ -469,17 +472,17 @@ msgstr "برگردان‌های همسان"
 msgid "disabled"
 msgstr ""
 
-#: static/js/stats.js:349
-#, javascript-format
+#: static/js/stats.js:353
+#, python-format, javascript-format
 msgid "%s second"
 msgid_plural "%s seconds"
 msgstr[0] ""
 
-#: static/js/stats.js:393
+#: static/js/stats.js:397
 msgid "Collapse details"
 msgstr "بستن جزئیات"
 
-#: static/js/stats.js:393
+#: static/js/stats.js:397
 msgid "Expand details"
 msgstr "باز کردن جزئیات"
 
@@ -540,6 +543,109 @@ msgstr[0] "یک دقیقه پیش%s دقیقه پیش"
 #: static/js/utils.js:171
 msgid "A few seconds ago"
 msgstr "چند ثانیه پیش"
+
+#: static/js/auth/components/RequestPasswordResetForm.js:95
+msgid "Email Address"
+msgstr ""
+
+#: static/js/auth/components/RequestPasswordResetForm.js:96
+msgid ""
+"Enter your email address, and we will send you a message with the special "
+"link to reset your password."
+msgstr ""
+
+#: static/js/auth/components/RequestPasswordResetForm.js:106
+msgid "No, thanks"
+msgstr ""
+
+#: static/js/auth/components/RequestPasswordResetForm.js:114
+msgid "Send Email"
+msgstr ""
+
+#: static/js/auth/components/SignInForm.js:85
+msgid "Creating new user accounts is prohibited."
+msgstr ""
+
+#: static/js/auth/components/SocialVerification.js:79
+#, python-format
+msgid ""
+"We found a user with <span>%s</span> email in our system. Please provide the "
+"password to finish the sign in procedure. This is a one-off procedure, which "
+"will establish a link between your Pootle and %s accounts."
+msgstr ""
+
+#: static/js/browser.js:163
+msgid "All Languages"
+msgstr "تمامی زبان ها"
+
+#: static/js/browser.js:166
+msgid "All Projects"
+msgstr "تمامی پروژه ها"
+
+#: static/js/browser.js:170
+#, fuzzy
+msgid "Entire Project"
+msgstr "تمامی پروژه ها"
+
+#: static/js/shared/components/UserEvent.js:73
+#: static/js/shared/components/UserEvent.js:94
+#, python-brace-format
+msgid "removed translation for ${sourceString}"
+msgstr ""
+
+#: static/js/shared/components/UserEvent.js:75
+#, fuzzy, python-brace-format
+msgid "accepted suggestion for ${sourceString}"
+msgstr "اظهارات ٪ قبول شده است "
+
+#: static/js/shared/components/UserEvent.js:77
+msgid "uploaded file"
+msgstr ""
+
+#: static/js/shared/components/UserEvent.js:79
+#, python-brace-format
+msgid "muted ${check} for ${sourceString}"
+msgstr ""
+
+#: static/js/shared/components/UserEvent.js:81
+#, python-brace-format
+msgid "unmuted ${check} for ${sourceString}"
+msgstr ""
+
+#: static/js/shared/components/UserEvent.js:83
+#, python-brace-format
+msgid "added suggestion for ${sourceString}"
+msgstr ""
+
+#: static/js/shared/components/UserEvent.js:85
+#, fuzzy, python-brace-format
+msgid "rejected suggestion for ${sourceString}"
+msgstr "اظهارات ٪ مردود شده است"
+
+#: static/js/shared/components/UserEvent.js:88
+#, python-brace-format
+msgid "translated ${sourceString}"
+msgstr ""
+
+#: static/js/shared/components/UserEvent.js:90
+#, python-brace-format
+msgid "edited ${sourceString}"
+msgstr ""
+
+#: static/js/shared/components/UserEvent.js:92
+#, python-brace-format
+msgid "pre-translated ${sourceString}"
+msgstr ""
+
+#: static/js/shared/components/UserEvent.js:96
+#, python-brace-format
+msgid "reviewed ${sourceString}"
+msgstr ""
+
+#: static/js/shared/components/UserEvent.js:98
+#, python-brace-format
+msgid "marked as needs work ${sourceString}"
+msgstr ""
 
 #: static/js/admin/components/language.jsx:52
 #, python-format
@@ -839,12 +945,6 @@ msgid ""
 "Translated by %(fullname)s in &ldquo;<span title=\"%(path)s\">%(project)s</"
 "span>&rdquo; project"
 msgstr ""
-
-#~ msgid "All Languages"
-#~ msgstr "تمامی زبان ها"
-
-#~ msgid "All Projects"
-#~ msgstr "تمامی پروژه ها"
 
 #~ msgid "Are you sure you want to continue?"
 #~ msgstr "ادامه می‌دهید؟"

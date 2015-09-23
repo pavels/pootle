@@ -129,6 +129,7 @@ Create :file:`~/.pootle/pootle_build.conf` with the following content:
 
     # Silence some checks so the build output is cleaner.
     SILENCED_SYSTEM_CHECKS = [
+        'pootle.W004',  # Pootle requires a working mail server
         'pootle.W006',  # sqlite database backend is unsupported
         'pootle.W010',  # DEFAULT_FROM_EMAIL has default setting
         'pootle.W011',  # POOTLE_CONTACT_EMAIL has default setting
@@ -195,7 +196,7 @@ like this:
 
 .. code-block:: bash
 
-    $ git log $previous_version..HEAD > docs/release/$version.rst
+    $ git log $previous_version..HEAD > docs/releases/$version.rst
 
 
 Or a more specific example:
@@ -440,6 +441,8 @@ Change all references to docs in the Pootle code to point to the branched
 version as apposed to the latest version.
 
 .. FIXME we should do this with a config variable to be honest!
+
+Deactivate documentation that is no longer applicable.
 
 
 Publish on PyPI

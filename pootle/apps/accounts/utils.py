@@ -11,9 +11,9 @@ import functools
 import logging
 import sys
 
-from django.db.models import Count
 from django.contrib.auth import get_user_model
 from django.core.validators import validate_email, ValidationError
+from django.db.models import Count
 
 from allauth.account.models import EmailAddress
 from allauth.account.utils import sync_user_email_addresses
@@ -282,8 +282,7 @@ class UserPurger(object):
             review.delete()
 
         for unit in self.user.reviewed.iterator():
-            reviews = (unit.get_suggestion_reviews()
-                           .exclude(submitter=self.user))
+            reviews = unit.get_suggestion_reviews().exclude(submitter=self.user)
             if reviews.exists():
                 previous_review = reviews.latest('pk')
                 unit.reviewed_by = previous_review.submitter
@@ -390,10 +389,11 @@ def verify_user(user):
 def get_duplicate_emails():
     """Get a list of emails that occur more than once in user accounts.
     """
-    return (get_user_model().objects.values('email')
-                            .annotate(Count('email'))
-                            .filter(email__count__gt=1)
-                            .values_list("email", flat=True))
+    return (get_user_model().objects.hide_meta()
+                                    .values('email')
+                                    .annotate(Count('email'))
+                                    .filter(email__count__gt=1)
+                                    .values_list("email", flat=True))
 
 
 def validate_email_unique(email, for_user=None):

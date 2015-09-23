@@ -84,7 +84,41 @@ class TranslationActionTypes(object):
     NEEDS_WORK = 5
 
 
-class SubmissionManager(models.Manager):
+class SubmissionQuerySet(models.QuerySet):
+
+    def _earliest_or_latest(self, field_name=None, direction="-"):
+        """
+        Overrides QuerySet._earliest_or_latest to add pk for secondary ordering
+        """
+        order_by = field_name or getattr(self.model._meta, 'get_latest_by')
+        assert bool(order_by), "earliest() and latest() require either a "\
+            "field_name parameter or 'get_latest_by' in the model"
+        assert self.query.can_filter(), \
+            "Cannot change a query once a slice has been taken."
+        obj = self._clone()
+        obj.query.set_limits(high=1)
+        obj.query.clear_ordering(force_empty=True)
+        # add pk as secondary ordering for Submissions
+        obj.query.add_ordering('%s%s' % (direction, order_by),
+                               '%s%s' % (direction, "pk"))
+        return obj.get()
+
+    def earliest(self, field_name=None):
+        return self._earliest_or_latest(field_name=field_name, direction="")
+
+    def latest(self, field_name=None):
+        return self._earliest_or_latest(field_name=field_name, direction="-")
+
+
+class BaseSubmissionManager(models.Manager):
+
+    def get_queryset(self):
+        return SubmissionQuerySet(self.model, using=self._db)
+
+
+class SubmissionManager(BaseSubmissionManager):
+
+    use_for_related_fields = True
 
     def get_queryset(self):
         """Mimics `select_related(depth=1)` behavior. Pending review."""
@@ -107,18 +141,20 @@ class SubmissionManager(models.Manager):
 
         :return: Queryset of `Submissions`s that create a `Unit`'s.
         """
-        return (self.get_queryset()
-                    .filter(type=SubmissionTypes.UNIT_CREATE))
+        return self.get_queryset().filter(type=SubmissionTypes.UNIT_CREATE)
 
     def get_unit_edits(self):
         """`Submission`s that change a `Unit`'s `target`.
 
         :return: Queryset of `Submissions`s that change a `Unit`'s target.
         """
-        return (self.get_queryset()
-                    .exclude(new_value__isnull=True)
-                    .filter(field__in=SubmissionFields.TRANSLATION_FIELDS)
-                    .filter(type__in=SubmissionTypes.EDITING_TYPES))
+        return (
+            self.get_queryset().exclude(new_value__isnull=True)
+                               .filter(
+                                    field__in=SubmissionFields.TRANSLATION_FIELDS,
+                                    type__in=SubmissionTypes.EDITING_TYPES,
+                               )
+        )
 
     def get_unit_state_changes(self):
         """Submissions that change a unit's STATE.
@@ -126,8 +162,7 @@ class SubmissionManager(models.Manager):
         :return: Queryset of `Submissions`s change a `Unit`'s `STATE`
             - ie FUZZY/TRANSLATED/UNTRANSLATED.
         """
-        return (self.get_queryset()
-                    .filter(field=SubmissionFields.STATE))
+        return self.get_queryset().filter(field=SubmissionFields.STATE)
 
     def get_unit_suggestion_reviews(self):
         """Submissions that review (reject/accept) `Unit` suggestions.
@@ -138,19 +173,18 @@ class SubmissionManager(models.Manager):
         # reject_suggestion does not set field so we must exclude STATE reviews
         # and it seems there are submissions that use STATE and are in
         # REVIEW_TYPES
-        return (self.get_queryset()
-                    .exclude(field=SubmissionFields.STATE)
-                    .filter(type__in=SubmissionTypes.REVIEW_TYPES))
+        return (self.get_queryset().exclude(field=SubmissionFields.STATE)
+                                   .filter(type__in=SubmissionTypes.REVIEW_TYPES))
 
 
 class Submission(models.Model):
     class Meta:
-        ordering = ["creation_time"]
+        ordering = ["creation_time", "pk"]
         get_latest_by = "creation_time"
         db_table = 'pootle_app_submission'
 
     objects = SubmissionManager()
-    simple_objects = models.Manager()
+    simple_objects = BaseSubmissionManager()
 
     creation_time = models.DateTimeField(db_index=True)
     translation_project = models.ForeignKey(
@@ -311,12 +345,12 @@ class Submission(models.Model):
             return None
 
         sugg_user = self.suggestion.user
-        author = format_html('<a href="{}">{}</a>', sugg_user.get_absolute_url(),
-                                                    sugg_user.display_name)
+        author = format_html(u'<a href="{}">{}</a>', sugg_user.get_absolute_url(),
+                                                     sugg_user.display_name)
         return {
-            SubmissionTypes.SUGG_ADD: _('Added suggestion'),
-            SubmissionTypes.SUGG_ACCEPT: _('Accepted suggestion from %s' % author),
-            SubmissionTypes.SUGG_REJECT: _('Rejected suggestion from %s' % author),
+            SubmissionTypes.SUGG_ADD: _(u'Added suggestion'),
+            SubmissionTypes.SUGG_ACCEPT: _(u'Accepted suggestion from %s', author),
+            SubmissionTypes.SUGG_REJECT: _(u'Rejected suggestion from %s', author),
         }.get(self.type, None)
 
     def save(self, *args, **kwargs):

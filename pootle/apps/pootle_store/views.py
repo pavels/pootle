@@ -93,7 +93,7 @@ def get_alt_src_langs(request, user, translation_project):
 
     langs |= project_alt_source
 
-    if not user.alt_src_langs.count():        
+    if not user.alt_src_langs.count() or false:        
         accept = request.META.get('HTTP_ACCEPT_LANGUAGE', '')
 
         for accept_lang, unused in parse_accept_lang_header(accept):

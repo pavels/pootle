@@ -468,6 +468,18 @@ class Unit(models.Model, base.TranslationUnit):
                     self.state = UNTRANSLATED
                     self.store.mark_dirty(CachedMethods.WORDCOUNT_STATS)
 
+            # If we update source language translation, mark all consequent langs fuzzy            
+            from .util import (find_altsrcs)
+            translation_project = self.store.translation_project.project
+            my_language = self.store.translation_project.language
+
+            if my_language == translation_project.source_language:
+                alt_languages = translation_project.languages.exclude(code=my_language.code)
+                alt_sources = find_altsrcs(self, alt_languages)
+                for alt_source in alt_sources:
+                    alt_source.markfuzzy()
+                    alt_source.save()
+
         # Updating unit from the .po file set its revision property to
         # a new value (the same for all units during its store updated)
         # since that change doesn't require further sync but note that

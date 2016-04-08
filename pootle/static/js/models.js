@@ -6,52 +6,44 @@
  * AUTHORS file for copyright and authorship information.
  */
 
-var _ = require('underscore');
-var Backbone = require('backbone');
+import Backbone from 'backbone';
+import 'backbone-relational';
+import _ from 'underscore';
 
-require('backbone-relational');
-
-var utils = require('./utils.js');
+import utils from './utils';
 
 
 /*
  * Store
  */
 
-var Store = Backbone.RelationalModel.extend({});
+export const Store = Backbone.RelationalModel.extend({});
 
 
 /*
  * Unit
  */
 
-var Unit = Backbone.RelationalModel.extend({
+export const Unit = Backbone.RelationalModel.extend({
 
   relations: [{
     type: 'HasOne',
     key: 'store',
     relatedModel: Store,
     reverseRelation: {
-      key: 'units'
-    }
+      key: 'units',
+    },
   }],
 
   /*
    * Sets the current unit's translation.
    */
-  setTranslation: function (value) {
+  setTranslation(value) {
+    let newValue = value;
     if (!_.isArray(value)) {
-      value = [value];
+      newValue = [value];
     }
-    this.set('target', _.map(value, function (item) {
-      return utils.cleanEscape(item);
-    }));
-  }
+    this.set('target', _.map(newValue, (item) => utils.cleanEscape(item)));
+  },
 
 });
-
-
-module.exports = {
-  Store: Store,
-  Unit: Unit,
-};

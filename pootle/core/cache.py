@@ -9,7 +9,7 @@
 
 
 from django.conf import settings
-from django.core.cache import caches, cache as default_cache
+from django.core.cache import cache as default_cache, caches
 from django.core.cache.backends.base import InvalidCacheBackendError
 from django.core.exceptions import ImproperlyConfigured
 
@@ -29,8 +29,9 @@ def make_method_key(model, method, key):
     if isinstance(model, basestring):
         name = model
     else:
-        name = (model.__name__ if hasattr(model, '__name__')
-                               else model.__class__.__name__)
+        name = (model.__name__
+                if hasattr(model, '__name__')
+                else model.__class__.__name__)
 
     key = make_key(**key) if isinstance(key, dict) else key
     return u':'.join([prefix, name, method, key])
@@ -53,9 +54,9 @@ def get_cache(cache=None):
         # Check for proper Redis persistent backends
         # FIXME: this logic needs to be a system sanity check
         if (cache in PERSISTENT_STORES and
-            (cache not in settings.CACHES or
-            'RedisCache' not in settings.CACHES[cache]['BACKEND'] or
-            settings.CACHES[cache].get('TIMEOUT', '') != None)):
+                (cache not in settings.CACHES or 'RedisCache' not in
+                 settings.CACHES[cache]['BACKEND'] or
+                 settings.CACHES[cache].get('TIMEOUT', '') is not None)):
             raise ImproperlyConfigured(
                 'Pootle requires a Redis-backed caching backend for %r '
                 'with `TIMEOUT: None`. Please review your settings.' % cache

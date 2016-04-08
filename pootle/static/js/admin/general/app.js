@@ -7,7 +7,8 @@
  */
 
 import dashboard from './dashboard';
-import permissions from './permissions';
+import formset from './formset';
+import staticpages from './staticpages';
 
 window.PTL = window.PTL || {};
 
@@ -18,8 +19,15 @@ PTL.commonAdmin = {
     switch (opts.page) {
       case 'dashboard':
         dashboard.init();
-      case 'permissions':
-        permissions.init();
+        break;
+      case 'formset':
+        formset.init();
+        break;
+      case 'staticpages':
+        staticpages.init(opts.opts);
+        break;
+      default:
+        break;
     }
   },
 

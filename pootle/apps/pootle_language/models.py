@@ -21,18 +21,8 @@ from django.utils.translation import ugettext_lazy as _
 from pootle.core.cache import make_method_key
 from pootle.core.mixins import TreeItem
 from pootle.core.url_helpers import get_editor_filter
-from pootle.i18n.gettext import tr_lang, language_dir
-
-
-class LanguageManager(models.Manager):
-
-    def get_queryset(self):
-        """Mimics `select_related(depth=1)` behavior. Pending review."""
-        return (
-            super(LanguageManager, self).get_queryset().select_related(
-                'directory',
-            )
-        )
+from pootle.i18n.gettext import language_dir, tr_lang
+from staticpages.models import StaticPage
 
 
 class LiveLanguageManager(models.Manager):
@@ -41,11 +31,12 @@ class LiveLanguageManager(models.Manager):
     A live language is any language containing at least a project with
     translatable files.
     """
+
     def get_queryset(self):
         return super(LiveLanguageManager, self).get_queryset().filter(
-                translationproject__isnull=False,
-                project__isnull=True,
-            ).distinct()
+            translationproject__isnull=False,
+            project__isnull=True,
+        ).distinct()
 
     def cached_dict(self, locale_code='en-us'):
         """Retrieves a sorted list of live language codes and names.
@@ -60,8 +51,8 @@ class LiveLanguageManager(models.Manager):
             languages = OrderedDict(
                 sorted([(lang[0], tr_lang(lang[1]))
                         for lang in self.values_list('code', 'fullname')],
-                        cmp=locale.strcoll,
-                        key=lambda x: x[1])
+                       cmp=locale.strcoll,
+                       key=lambda x: x[1])
             )
             cache.set(key, languages, settings.POOTLE_CACHE_TIMEOUT)
 
@@ -70,44 +61,52 @@ class LiveLanguageManager(models.Manager):
 
 class Language(models.Model, TreeItem):
 
-    code_help_text = _('ISO 639 language code for the language, possibly '
-            'followed by an underscore (_) and an ISO 3166 country code. '
-            '<a href="http://www.w3.org/International/articles/language-tags/">'
-            'More information</a>')
-    code = models.CharField(max_length=50, null=False, unique=True,
-            db_index=True, verbose_name=_("Code"), help_text=code_help_text)
+    # any changes to the `code` field may require updating the schema
+    # see migration 0002_case_insensitive_schema.py
+    code = models.CharField(
+        max_length=50, null=False, unique=True, db_index=True,
+        verbose_name=_("Code"),
+        help_text=_('ISO 639 language code for the language, possibly '
+                    'followed by an underscore (_) and an ISO 3166 country '
+                    'code. <a href="http://www.w3.org/International/'
+                    'articles/language-tags/">More information</a>')
+    )
     fullname = models.CharField(max_length=255, null=False,
-            verbose_name=_("Full Name"))
+                                verbose_name=_("Full Name"))
 
-    specialchars_help_text = _('Enter any special characters that users '
-            'might find difficult to type')
-    specialchars = models.CharField(max_length=255, blank=True,
-            verbose_name=_("Special Characters"),
-            help_text=specialchars_help_text)
+    specialchars = models.CharField(
+        max_length=255, blank=True, verbose_name=_("Special Characters"),
+        help_text=_('Enter any special characters that users might find '
+                    'difficult to type')
+    )
 
     plurals_help_text = _('For more information, visit '
-            '<a href="http://docs.translatehouse.org/projects/'
-            'localization-guide/en/latest/l10n/pluralforms.html">'
-            'our page</a> on plural forms.')
+                          '<a href="http://docs.translatehouse.org/projects/'
+                          'localization-guide/en/latest/l10n/'
+                          'pluralforms.html">'
+                          'our page</a> on plural forms.')
     nplural_choices = (
-            (0, _('Unknown')), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5), (6, 6)
+        (0, _('Unknown')), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5), (6, 6)
     )
-    nplurals = models.SmallIntegerField(default=0, choices=nplural_choices,
-            verbose_name=_("Number of Plurals"), help_text=plurals_help_text)
-    pluralequation = models.CharField(max_length=255, blank=True,
-            verbose_name=_("Plural Equation"), help_text=plurals_help_text)
+    nplurals = models.SmallIntegerField(
+        default=0, choices=nplural_choices,
+        verbose_name=_("Number of Plurals"), help_text=plurals_help_text
+    )
+    pluralequation = models.CharField(
+        max_length=255, blank=True, verbose_name=_("Plural Equation"),
+        help_text=plurals_help_text)
 
     directory = models.OneToOneField('pootle_app.Directory', db_index=True,
-            editable=False)
+                                     editable=False)
 
-    objects = LanguageManager()
+    objects = models.Manager()
     live = LiveLanguageManager()
 
-    class Meta:
+    class Meta(object):
         ordering = ['code']
         db_table = 'pootle_app_language'
 
-    ############################ Properties ###################################
+    # # # # # # # # # # # # # #  Properties # # # # # # # # # # # # # # # # # #
 
     @property
     def pootle_path(self):
@@ -118,12 +117,33 @@ class Language(models.Model, TreeItem):
         """Localized fullname for the language."""
         return tr_lang(self.fullname)
 
-    ############################ Methods ######################################
-
     @property
     def direction(self):
         """Return the language direction."""
         return language_dir(self.code)
+
+    # # # # # # # # # # # # # #  Methods # # # # # # # # # # # # # # # # # # #
+
+    @classmethod
+    def get_canonical(cls, language_code):
+        """Returns the canonical `Language` object matching `language_code`.
+
+        If no language can be matched, `None` will be returned.
+
+        :param language_code: the code of the language to retrieve.
+        """
+        try:
+            return cls.objects.get(code__iexact=language_code)
+        except cls.DoesNotExist:
+            _lang_code = language_code
+            if "-" in language_code:
+                _lang_code = language_code.replace("-", "_")
+            elif "_" in language_code:
+                _lang_code = language_code.replace("_", "-")
+            try:
+                return cls.objects.get(code__iexact=_lang_code)
+            except cls.DoesNotExist:
+                return None
 
     def __unicode__(self):
         return u"%s - %s" % (self.name, self.code)
@@ -161,7 +181,7 @@ class Language(models.Model, TreeItem):
         if self.fullname:
             self.fullname = self.fullname.strip()
 
-    ### TreeItem
+    # # # TreeItem
 
     def get_children(self):
         return self.translationproject_set.live()
@@ -169,21 +189,22 @@ class Language(models.Model, TreeItem):
     def get_cachekey(self):
         return self.directory.pootle_path
 
-    ### /TreeItem
+    # # # /TreeItem
 
     def get_stats_for_user(self, user):
         self.set_children(self.get_children_for_user(user))
-
         return self.get_stats()
 
-    def get_children_for_user(self, user):
-        translation_projects = self.translationproject_set \
-                                   .for_user(user) \
-                                   .order_by('project__fullname')
-        user_tps = filter(lambda x: x.is_accessible_by(user),
-                          translation_projects)
+    def get_children_for_user(self, user, select_related=None):
+        return self.translationproject_set.for_user(
+            user, select_related=select_related
+        ).select_related(
+            "project"
+        ).order_by('project__fullname')
 
-        return user_tps
+    def get_announcement(self, user=None):
+        """Return the related announcement, if any."""
+        return StaticPage.get_announcement_for(self.pootle_path, user)
 
 
 @receiver([post_delete, post_save])

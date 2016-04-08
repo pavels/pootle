@@ -6,49 +6,48 @@
  * AUTHORS file for copyright and authorship information.
  */
 
-'use strict';
+import Backbone from 'backbone';
+import _ from 'underscore';
 
-var _ = require('underscore');
-var Backbone = require('backbone');
-
-var AdminAPIMixin = require('mixins/admin_api');
+import AdminAPIMixin from 'mixins/admin_api';
 
 
-var Language = Backbone.Model.extend({
+export const Language = Backbone.Model.extend({
 
   defaults: {
-    'code': '',
-    'fullname': '',
-    'specialchars': '',
-    'nplurals': '0',
-    'pluralequation': '',
+    code: '',
+    fullname: '',
+    specialchars: '',
+    nplurals: '0',
+    pluralequation: '',
   },
 
   fieldChoices: {
-    'nplurals': [
+    nplurals: [
       // FIXME: using `gettext()` here breaks everything
-      [0, 'Unknown'], [1, 1], [2, 2], [3, 3], [4, 4], [5, 5], [6, 6]
+      [0, 'Unknown'], [1, 1], [2, 2], [3, 3], [4, 4], [5, 5], [6, 6],
     ],
   },
 
-  urlRoot: function () {
+  urlRoot() {
     return l('/xhr/admin/languages/');
   },
 
-  getAbsoluteUrl: function () {
+  getAbsoluteUrl() {
     return l(['', this.get('code'), ''].join('/'));
   },
 
-  getPermissionsUrl: function () {
+  getPermissionsUrl() {
     return l(['', this.get('code'), 'admin', 'permissions', ''].join('/'));
   },
 
-  getFieldChoices: function (fieldName) {
+  getFieldChoices(fieldName) {
     if (this.fieldChoices && this.fieldChoices.hasOwnProperty(fieldName)) {
-      return this.fieldChoices[fieldName].map(function (field) {
+      return this.fieldChoices[fieldName].map((field) => ({
         // FIXME: react-select's issue #25 prevents using non-string values
-        return {value: field[0].toString(), label: field[1]};
-      });
+        value: field[0].toString(),
+        label: field[1],
+      }));
     }
     return [];
   },
@@ -56,17 +55,12 @@ var Language = Backbone.Model.extend({
 });
 
 
-var LanguageSet = Backbone.Collection.extend(
+export const LanguageSet = Backbone.Collection.extend(
   _.extend({}, AdminAPIMixin, {
 
-  model: Language,
+    model: Language,
 
-  url: l('/xhr/admin/languages/'),
+    url: l('/xhr/admin/languages/'),
 
-}));
-
-
-module.exports = {
-  Language: Language,
-  LanguageSet: LanguageSet,
-};
+  })
+);

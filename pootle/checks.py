@@ -16,26 +16,33 @@ from django.utils.translation import ugettext as _
 TTK_MINIMUM_REQUIRED_VERSION = (1, 13, 0)
 
 # Minimum Django version required for Pootle to run.
-DJANGO_MINIMUM_REQUIRED_VERSION = (1, 7, 10)
+DJANGO_MINIMUM_REQUIRED_VERSION = (1, 8, 12)
 
 # Minimum lxml version required for Pootle to run.
 LXML_MINIMUM_REQUIRED_VERSION = (2, 2, 2, 0)
 
 # Minimum Redis server version required.
 # Initially set to some minimums based on:
-# 1. Ubuntu 12.04LTS's version 2.8.4 (10.04LTS was too old for RQ)
-# 2. RQ requires >= 2.6.0, and
-# 3. Wanting to insist on at least the latest stable that devs are using i.e.
-#    2.8.* versions of Redis
+# 1. Ubuntu 14.04LTS (Trusty) version 2.8.4
+#    Ubuntu 12.04LTS (Precise) version 2.2.12
+#    Ubuntu 10.04LTS was too old for RQ
+#    See http://packages.ubuntu.com/search?keywords=redis-server
+# 2. RQ requires Redis >= 2.7.0, and
+#    See https://github.com/nvie/rq/blob/master/README.md
+# 3. Aligining with current Redis stable as best we can
+#    At time of writing, actual Redis stable is 3.0 series with 2.8 cosidered
+#    old stable.
+# 4. Wanting to insist on at least the latest stable that devs are using
+#    The 2.8.* versions of Redis
 REDIS_MINIMUM_REQUIRED_VERSION = (2, 8, 4)
 
 
 # XXX List of manage.py commands not to run the rqworker check on.
 # Maybe tagging can improve this?
 RQWORKER_WHITELIST = [
-    "start", "initdb", "revision", "sync_stores", "run_cherrypy",
-    "refresh_stats", "update_stores", "calculate_checks", "retry_failed_jobs",
-    "check", "runserver",
+    "start", "initdb", "revision", "sync_stores", "refresh_stats",
+    "update_stores", "calculate_checks", "retry_failed_jobs", "check",
+    "runserver",
 ]
 
 
@@ -45,7 +52,7 @@ def _version_to_string(version, significance=None):
     return '.'.join(str(n) for n in version)
 
 
-@checks.register()
+@checks.register('data')
 def check_duplicate_emails(app_configs=None, **kwargs):
     from accounts.utils import get_duplicate_emails
     errors = []
@@ -111,11 +118,13 @@ def check_redis(app_configs=None, **kwargs):
 
     try:
         queue = get_queue()
-        workers = Worker.all(queue.connection)
+        Worker.all(queue.connection)
     except Exception as e:
         conn_settings = queue.connection.connection_pool.connection_kwargs
-        errors.append(checks.Critical(_("Could not connect to Redis (%s)", e),
-            hint=_("Make sure Redis is running on %(host)s:%(port)s") % conn_settings,
+        errors.append(checks.Critical(
+            _("Could not connect to Redis (%s)", e),
+            hint=_("Make sure Redis is running on "
+                   "%(host)s:%(port)s") % conn_settings,
             id="pootle.C001",
         ))
     else:
@@ -152,7 +161,8 @@ def check_settings(app_configs=None, **kwargs):
     if "RedisCache" not in settings.CACHES.get("default", {}).get("BACKEND"):
         errors.append(checks.Critical(
             _("Cache backend is not set to Redis."),
-            hint=_("Set default cache backend to django_redis.cache.RedisCache\n"
+            hint=_("Set default cache backend to "
+                   "django_redis.cache.RedisCache\n"
                    "Current settings: %r") % (settings.CACHES.get("default")),
             id="pootle.C005",
         ))
@@ -166,6 +176,20 @@ def check_settings(app_configs=None, **kwargs):
                 id="pootle.C004",
             ))
 
+    redis_cache_aliases = ("default", "redis", "stats")
+    redis_locations = set()
+    for alias in redis_cache_aliases:
+        if alias in settings.CACHES:
+            redis_locations.add(settings.CACHES.get(alias, {}).get("LOCATION"))
+
+    if len(redis_locations) < len(redis_cache_aliases):
+        errors.append(checks.Critical(
+            _("Distinct django_redis.cache.RedisCache configurations "
+              "are required for `default`, `redis` and `stats`."),
+            hint=_("Double-check your CACHES settings"),
+            id="pootle.C017",
+        ))
+
     if settings.DEBUG:
         errors.append(checks.Warning(
             _("DEBUG mode is on. Do not do this in production!"),
@@ -176,14 +200,16 @@ def check_settings(app_configs=None, **kwargs):
         # We don't bother warning about sqlite in DEBUG mode.
         errors.append(checks.Warning(
             _("The sqlite database backend is unsupported"),
-            hint=_("Set your default database engine to postgresql_psycopg2 or mysql"),
+            hint=_("Set your default database engine to postgresql_psycopg2 "
+                   "or mysql"),
             id="pootle.W006",
         ))
 
     if settings.SESSION_ENGINE.split(".")[-1] not in ("cache", "cached_db"):
         errors.append(checks.Warning(
             _("Not using cached_db as session engine"),
-            hint=_("Set SESSION_ENGINE to django.contrib.sessions.backend.cached_db\n"
+            hint=_("Set SESSION_ENGINE to "
+                   "django.contrib.sessions.backend.cached_db\n"
                    "Current settings: %r") % (settings.SESSION_ENGINE),
             id="pootle.W007",
         ))
@@ -242,11 +268,11 @@ def check_settings(app_configs=None, **kwargs):
         if markup_filter is not None:
             try:
                 if markup_filter == 'textile':
-                    import textile
+                    import textile  # noqa
                 elif markup_filter == 'markdown':
-                    import markdown
+                    import markdown  # noqa
                 elif markup_filter == 'restructuredtext':
-                    import docutils
+                    import docutils  # noqa
                 else:
                     errors.append(checks.Warning(
                         _("Invalid markup in POOTLE_MARKUP_FILTER."),
@@ -262,10 +288,86 @@ def check_settings(app_configs=None, **kwargs):
                     id="pootle.W015",
                 ))
 
+    if settings.POOTLE_TM_SERVER:
+        tm_indexes = []
+
+        for server in settings.POOTLE_TM_SERVER:
+            if 'INDEX_NAME' not in settings.POOTLE_TM_SERVER[server]:
+                errors.append(checks.Critical(
+                    _("POOTLE_TM_SERVER['%s'] has no INDEX_NAME.", server),
+                    hint=_("Set an INDEX_NAME for POOTLE_TM_SERVER['%s'].",
+                           server),
+                    id="pootle.C008",
+                ))
+            elif settings.POOTLE_TM_SERVER[server]['INDEX_NAME'] in tm_indexes:
+                errors.append(checks.Critical(
+                    _("Duplicate '%s' INDEX_NAME in POOTLE_TM_SERVER.",
+                      settings.POOTLE_TM_SERVER[server]['INDEX_NAME']),
+                    hint=_("Set different INDEX_NAME for all servers in "
+                           "POOTLE_TM_SERVER."),
+                    id="pootle.C009",
+                ))
+            else:
+                tm_indexes.append(
+                    settings.POOTLE_TM_SERVER[server]['INDEX_NAME'])
+
+            if 'ENGINE' not in settings.POOTLE_TM_SERVER[server]:
+                errors.append(checks.Critical(
+                    _("POOTLE_TM_SERVER['%s'] has no ENGINE.", server),
+                    hint=_("Set a ENGINE for POOTLE_TM_SERVER['%s'].",
+                           server),
+                    id="pootle.C010",
+                ))
+
+            if 'HOST' not in settings.POOTLE_TM_SERVER[server]:
+                errors.append(checks.Critical(
+                    _("POOTLE_TM_SERVER['%s'] has no HOST.", server),
+                    hint=_("Set a HOST for POOTLE_TM_SERVER['%s'].",
+                           server),
+                    id="pootle.C011",
+                ))
+
+            if 'PORT' not in settings.POOTLE_TM_SERVER[server]:
+                errors.append(checks.Critical(
+                    _("POOTLE_TM_SERVER['%s'] has no PORT.", server),
+                    hint=_("Set a PORT for POOTLE_TM_SERVER['%s'].",
+                           server),
+                    id="pootle.C012",
+                ))
+
+            if ('WEIGHT' in settings.POOTLE_TM_SERVER[server] and
+                not (0.0 <= settings.POOTLE_TM_SERVER[server]['WEIGHT']
+                     <= 1.0)):
+                errors.append(checks.Warning(
+                    _("POOTLE_TM_SERVER['%s'] has a WEIGHT less than 0.0 or "
+                      "greater than 1.0", server),
+                    hint=_("Set a WEIGHT between 0.0 and 1.0 (both included) "
+                           "for POOTLE_TM_SERVER['%s'].", server),
+                    id="pootle.W019",
+                ))
+
+    for coefficient_name in ['EDIT', 'REVIEW', 'SUGGEST', 'ANALYZE']:
+        if coefficient_name not in settings.POOTLE_SCORE_COEFFICIENTS:
+            errors.append(checks.Critical(
+                _("POOTLE_SCORE_COEFFICIENTS has no %s.", coefficient_name),
+                hint=_("Set %s in POOTLE_SCORE_COEFFICIENTS.", coefficient_name),
+                id="pootle.C014",
+            ))
+        else:
+            coef = settings.POOTLE_SCORE_COEFFICIENTS[coefficient_name]
+            if not isinstance(coef, float):
+                errors.append(checks.Critical(
+                    _("Invalid value for %s in POOTLE_SCORE_COEFFICIENTS.",
+                        coefficient_name),
+                    hint=_("Set a valid value for %s "
+                           "in POOTLE_SCORE_COEFFICIENTS.", coefficient_name),
+                    id="pootle.C015",
+                ))
+
     return errors
 
 
-@checks.register()
+@checks.register('data')
 def check_users(app_configs=None, **kwargs):
     from django.contrib.auth import get_user_model
     from django.db import ProgrammingError
@@ -295,7 +397,7 @@ def check_db_transaction_on_commit(app_configs=None, **kwargs):
     from django.db import connection
     errors = []
     try:
-        on_commit = connection.on_commit
+        connection.on_commit
     except AttributeError:
         errors.append(checks.Critical(
             _("Database connection does not implement on_commit."),
@@ -326,4 +428,25 @@ def check_email_server_is_alive(app_configs=None, **kwargs):
             ))
         else:
             connection.close()
+    return errors
+
+
+@checks.register('data')
+def check_revision(app_configs=None, **kwargs):
+    from pootle.core.models import Revision
+    from pootle_store.models import Unit
+
+    errors = []
+    revision = Revision.get()
+    try:
+        max_revision = Unit.max_revision()
+    except (OperationalError, ProgrammingError):
+        return errors
+    if revision is None or revision < max_revision:
+        errors.append(checks.Critical(
+            _("Revision is missing or has an incorrect value."),
+            hint=_("Run `revision --restore` to reset the revision counter."),
+            id="pootle.C016",
+        ))
+
     return errors

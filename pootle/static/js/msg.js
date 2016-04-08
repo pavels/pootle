@@ -6,30 +6,28 @@
  * AUTHORS file for copyright and authorship information.
  */
 
-'use strict';
-
-var _ = require('underscore');
-var Backbone = require('backbone');
+import Backbone from 'backbone';
+import _ from 'underscore';
 
 
-var Message = Backbone.Model.extend({
+const Message = Backbone.Model.extend({
   defaults: {
     text: '',
     level: 'info',
-    language: 'en'
-  }
+    language: 'en',
+  },
 });
 
 
-var MessageList = Backbone.Collection.extend({
-  model: Message
+const MessageList = Backbone.Collection.extend({
+  model: Message,
 });
 
 
-var MessageView = Backbone.View.extend({
+const MessageView = Backbone.View.extend({
   className: 'alert alert-block',
 
-  render: function () {
+  render() {
     this.$el.addClass(['alert', this.model.get('level')].join('-'));
     this.$el.attr('lang', this.model.get('language'));
 
@@ -41,57 +39,55 @@ var MessageView = Backbone.View.extend({
 });
 
 
-var MessageListView = Backbone.View.extend({
+const MessageListView = Backbone.View.extend({
   el: '.js-alerts',
 
-  initialize: function () {
+  initialize() {
     this.subViews = [];
 
     this.listenTo(this.collection, 'add', this.add);
     this.listenTo(this.collection, 'remove', this.remove);
   },
 
-  add: function (msg) {
-    var msgView = new MessageView({model: msg});
+  add(msg) {
+    const msgView = new MessageView({ model: msg });
     this.subViews.push(msgView);
 
     this.$el.prepend(msgView.render().el);
   },
 
-  remove: function (msg) {
-    var currentView = _.find(this.subViews, function (view) {
-      return view.model === msg;
-    });
+  remove(msg) {
+    const currentView = _.find(this.subViews, (view) => view.model === msg);
     this.subViews = _(this.subViews).without(currentView);
 
-    currentView.$el.fadeOut(3500, function () {
+    currentView.$el.fadeOut(3500, () => {
       currentView.remove();
     });
-  }
+  },
 
 });
 
 
-var messages = new MessageList(),
-    messagesView;
+const messages = new MessageList();
+let messagesView;
 
 
-var msg = {
+const msg = {
 
-  show: function (opts) {
+  show(opts) {
     if (!messagesView) {
-      messagesView = new MessageListView({collection: messages});
+      messagesView = new MessageListView({ collection: messages });
     }
-    var msg = new Message(opts);
+    const message = new Message(opts);
 
-    messages.add(msg);
+    messages.add(message);
 
-    window.setTimeout(function () {
-      messages.remove(msg);
+    window.setTimeout(() => {
+      messages.remove(message);
     }, 2000);
-  }
+  },
 
 };
 
 
-module.exports = msg;
+export default msg;

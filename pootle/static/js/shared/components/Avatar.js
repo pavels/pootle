@@ -8,11 +8,10 @@
 
 import md5 from 'md5';
 import React, { PropTypes } from 'react';
-import { PureRenderMixin } from 'react/addons';
+import { PureRenderMixin } from 'react-addons-pure-render-mixin';
 
 
 const Avatar = React.createClass({
-  mixins: [PureRenderMixin],
 
   // FIXME: be smarter with props validation, e.g. `email` should be required if
   // `src` is missing etc.
@@ -24,6 +23,8 @@ const Avatar = React.createClass({
     title: PropTypes.string,
     username: PropTypes.string,
   },
+
+  mixins: [PureRenderMixin],
 
   getDefaultProps() {
     return {
@@ -41,13 +42,21 @@ const Avatar = React.createClass({
     let imgSrc = this.props.src;
     if (email) {
       let emailMd5 = email;
-      if (email.indexOf('@') > -1 ) {
+      if (email.indexOf('@') > -1) {
         emailMd5 = md5(email);
       }
       imgSrc = `https://secure.gravatar.com/avatar/${emailMd5}?s=${size}&d=mm`;
     }
 
-    const icon = <img src={imgSrc} height={size} width={size} title={title} />;
+    const icon = (
+      <img
+        className="avatar"
+        src={imgSrc}
+        height={size}
+        width={size}
+        title={title}
+      />
+    );
 
     if (username !== undefined) {
       return (
@@ -62,7 +71,7 @@ const Avatar = React.createClass({
     }
 
     return icon;
-  }
+  },
 
 });
 

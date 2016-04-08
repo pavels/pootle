@@ -1,3 +1,4 @@
--r base.txt
+# Package building
 
-sphinx
+-r base.txt
+-r _docs.txt

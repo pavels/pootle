@@ -6,24 +6,23 @@
  * AUTHORS file for copyright and authorship information.
  */
 
-'use strict';
-
 import React from 'react';
 import assign from 'object-assign';
-import { PureRenderMixin } from 'react/addons';
 
-import { FormElement } from 'components/forms';
-import { FormMixin } from 'mixins/forms';
+import { gotoScreen, signUp } from '../actions';
+import FormElement from 'components/FormElement';
+import FormMixin from 'mixins/FormMixin';
 
 
-let SignUpForm = React.createClass({
-  mixins: [FormMixin],
+const SignUpForm = React.createClass({
 
   propTypes: {
+    dispatch: React.PropTypes.func.isRequired,
     formErrors: React.PropTypes.object.isRequired,
     isLoading: React.PropTypes.bool.isRequired,
   },
 
+  mixins: [FormMixin],
 
   /* Lifecycle */
 
@@ -41,7 +40,7 @@ let SignUpForm = React.createClass({
 
   componentWillReceiveProps(nextProps) {
     if (this.state.errors !== nextProps.formErrors) {
-      this.setState({errors: nextProps.formErrors});
+      this.setState({ errors: nextProps.formErrors });
     }
   },
 
@@ -50,19 +49,19 @@ let SignUpForm = React.createClass({
 
   handleSignUp(e) {
     e.preventDefault();
-    this.props.flux.getActions('auth').gotoScreen('signIn');
+    this.props.dispatch(gotoScreen('signIn'));
   },
 
   handleFormSubmit(e) {
     e.preventDefault();
-    this.props.flux.getActions('auth').signUp(this.state.formData);
+    this.props.dispatch(signUp(this.state.formData));
   },
 
 
   /* Others */
 
   hasData() {
-    let { formData } = this.state;
+    const { formData } = this.state;
     return (formData.username !== '' && formData.email !== '' &&
             formData.password1 !== '' && formData.password2 !== '');
   },
@@ -71,44 +70,45 @@ let SignUpForm = React.createClass({
   /* Layout */
 
   render() {
-    let { errors } = this.state;
-    let { formData } = this.state;
+    const { errors } = this.state;
+    const { formData } = this.state;
 
     return (
       <form
         method="post"
-        onSubmit={this.handleFormSubmit}>
+        onSubmit={this.handleFormSubmit}
+      >
         <div className="fields">
           <FormElement
-            attribute="username"
+            autoFocus
             label={gettext('Username')}
-            autoFocus={true}
             handleChange={this.handleChange}
-            formData={formData}
-            errors={errors}
+            name="username"
+            errors={errors.username}
+            value={formData.username}
           />
           <FormElement
-            attribute="email"
             label={gettext('Email')}
             handleChange={this.handleChange}
-            formData={formData}
-            errors={errors}
+            name="email"
+            errors={errors.email}
+            value={formData.email}
           />
           <FormElement
             type="password"
-            attribute="password1"
             label={gettext('Password')}
             handleChange={this.handleChange}
-            formData={formData}
-            errors={errors}
+            name="password1"
+            errors={errors.password1}
+            value={formData.password1}
           />
           <FormElement
             type="password"
-            attribute="password2"
             label={gettext('Repeat Password')}
             handleChange={this.handleChange}
-            formData={formData}
-            errors={errors}
+            name="password2"
+            errors={errors.password2}
+            value={formData.password2}
           />
         </div>
         {this.renderAllFormErrors()}
@@ -129,7 +129,8 @@ let SignUpForm = React.createClass({
         </div>
       </form>
     );
-  }
+  },
+
 });
 
 

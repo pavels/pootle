@@ -6,29 +6,28 @@
  * AUTHORS file for copyright and authorship information.
  */
 
-'use strict';
-
-// Required for `Promise` support
-import 'babel-core/polyfill';
+import 'backbone-safesync';
+import $ from 'jquery';
+import 'jquery-magnific-popup';
+import 'jquery-select2';
+import 'jquery-tipsy';
+import Spinner from 'spin';
 
 import cookie from 'utils/cookie';
+import diff from 'utils/diff';
 
-// Aliased non-commonJS modules
-
-// Major libraries
-var $ = require('jquery');
-
-// jQuery plugins
-require('jquery-cookie');
-require('jquery-magnific-popup');
-require('jquery-select2');
-require('jquery-tipsy');
-
-// Backbone plugins
-require('backbone-safesync');
-
-// Other plugins
-var Spinner = require('spin');
+import agreement from './agreement';
+import auth from './auth';
+import browser from './browser';
+import captcha from './captcha';
+import contact from './contact';
+import dropdown from './dropdown';
+import helpers from './helpers';
+import score from './score';
+import search from './search';
+import stats from './stats';
+import configureStore from './store';
+import utils from './utils';
 
 
 Spinner.defaults = {
@@ -42,13 +41,13 @@ Spinner.defaults = {
   direction: 1,
   speed: 1,
   trail: 50,
-  opacity: 1/4,
+  opacity: 1 / 4,
   fps: 20,
   zIndex: 2e9,
   className: 'spinner',
   top: 'auto',
   left: 'auto',
-  position: 'relative'
+  position: 'relative',
 };
 
 
@@ -59,30 +58,30 @@ Spinner.defaults = {
 
 window.PTL = window.PTL || {};
 
-PTL.auth = require('./auth');
-PTL.agreement = require('./agreement.js');
-PTL.browser = require('./browser.js');
-PTL.captcha = require('./captcha.js');
-PTL.contact = require('./contact.js');
-PTL.dropdown = require('./dropdown.js');
-PTL.msg = require('./msg.js');
-PTL.search = require('./search.js');
-PTL.score = require('./score.js');
-PTL.stats = require('./stats.js');
-PTL.utils = require('./utils.js');
+PTL.auth = auth;
+PTL.agreement = agreement;
+PTL.browser = browser;
+PTL.captcha = captcha;
+PTL.cookie = cookie;
+PTL.contact = contact;
+PTL.dropdown = dropdown;
+PTL.score = score;
+PTL.search = search;
+PTL.stats = stats;
+PTL.utils = utils;
+PTL.utils.diff = diff;
 
 
-var helpers = require('./helpers.js');
-var utils = require('./utils.js');
+PTL.store = configureStore();
 
 
 PTL.common = {
 
-  init: function (opts) {
+  init(opts) {
     PTL.auth.init();
     PTL.browser.init();
 
-    $(window).load(function () {
+    $(window).load(() => {
       $('body').removeClass('preload');
     });
 
@@ -101,95 +100,93 @@ PTL.common = {
       fade: true,
       delayIn: 750,
       opacity: 1,
-      live: '[title], [original-title]'
+      live: '[title], [original-title]',
     });
     setInterval($.fn.tipsy.revalidate, 1000);
 
-    $(".js-select2").select2({
-      width: "resolve"
+    $('.js-select2').select2({
+      width: 'resolve',
     });
 
     // Set CSRF token for XHR requests (jQuery-specific)
     $.ajaxSetup({
       traditional: true,
       crossDomain: false,
-      beforeSend: function (xhr, settings) {
+      beforeSend(xhr, settings) {
         if (!/^(GET|HEAD|OPTIONS|TRACE)$/.test(settings.type)) {
           xhr.setRequestHeader('X-CSRFToken', cookie('csrftoken'));
         }
-      }
+      },
     });
 
     /* Collapsing functionality */
     // XXX: crappy code, only used in `term_edit.html`
-    $(document).on("click", ".collapse", function (e) {
+    $(document).on('click', '.collapse', function collapse(e) {
       e.preventDefault();
-      $(this).siblings(".collapsethis").slideToggle("fast");
+      $(this).siblings('.collapsethis').slideToggle('fast');
 
-      if ($("textarea", $(this).next("div.collapsethis")).length) {
-        $("textarea", $(this).next("div.collapsethis")).focus();
+      if ($('textarea', $(this).next('div.collapsethis')).length) {
+        $('textarea', $(this).next('div.collapsethis')).focus();
       }
     });
 
     /* Page sidebar */
     // TODO: create a named function
-    $(document).on('click', '.js-sidebar-toggle', function () {
-      var $sidebar = $('.js-sidebar'),
-          openClass = 'sidebar-open',
-          cookieName = 'pootle-browser-sidebar',
-          cookieData = JSON.parse($.cookie(cookieName)) || {};
+    $(document).on('click', '.js-sidebar-toggle', () => {
+      const $sidebar = $('.js-sidebar');
+      const openClass = 'sidebar-open';
+      const cookieName = 'pootle-browser-sidebar';
+      const cookieData = JSON.parse(cookie(cookieName)) || {};
 
       $sidebar.toggleClass(openClass);
 
       cookieData.isOpen = $sidebar.hasClass(openClass);
-      $.cookie(cookieName, JSON.stringify(cookieData), {path: '/'});
+      cookie(cookieName, JSON.stringify(cookieData), { path: '/' });
     });
 
     /* Popups */
     $(document).magnificPopup({
       type: 'ajax',
       delegate: '.js-popup-ajax',
-      mainClass: 'popup-ajax'
+      mainClass: 'popup-ajax',
     });
 
     /* Generic toggle */
-    $(document).on("click", ".js-toggle", function (e) {
+    $(document).on('click', '.js-toggle', function toggle(e) {
       e.preventDefault();
-      var target = $(this).attr("href") || $(this).data("target");
+      const target = $(this).attr('href') || $(this).data('target');
       $(target).toggle();
     });
 
     /* Sorts language names within select elements */
-    var ids = ["id_languages", "id_alt_src_langs", "-language",
-               "-source_language"];
+    const ids = ['id_languages', 'id_alt_src_langs', '-language',
+                 '-source_language'];
 
-    $.each(ids, function (i, id) {
-      var $selects = $("select[id$='" + id + "']");
+    $.each(ids, (i, id) => {
+      const $selects = $(`select[id$="${id}"]`);
 
-      $.each($selects, function (i, select) {
-        var $select = $(select);
-        var options = $("option", $select);
-        var selected;
+      $.each($selects, (j, select) => {
+        const $select = $(select);
+        const options = $('option', $select);
+        let selected;
 
         if (options.length) {
-          if (!$select.is("[multiple]")) {
-            selected = $(":selected", $select);
+          if (!$select.is('[multiple]')) {
+            selected = $(':selected', $select);
           }
 
-          var opsArray = $.makeArray(options);
-          opsArray.sort(function (a, b) {
-            return utils.strCmp($(a).text(), $(b).text());
-          });
+          const opsArray = $.makeArray(options);
+          opsArray.sort((a, b) => utils.strCmp($(a).text(), $(b).text()));
 
           options.remove();
           $select.append($(opsArray));
 
-          if (!$select.is("[multiple]")) {
+          if (!$select.is('[multiple]')) {
             $select.get(0).selectedIndex = $(opsArray).index(selected);
           }
         }
       });
     });
-  }
+  },
 
 };

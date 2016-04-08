@@ -10,7 +10,7 @@ SPRITE_DIR = ${IMAGES_DIR}/sprite
 FORMATS=--formats=bztar
 TEST_ENV_NAME = pootle_test_env
 
-.PHONY: all build clean sprite test pot mo mo-all help docs assets pep8
+.PHONY: all build clean sprite test pot mo mo-all help docs assets
 
 all: help
 
@@ -19,26 +19,41 @@ build: docs mo assets
 
 assets:
 	cd ${JS_DIR} && \
-	npm update && \
+	npm install && \
 	cd ${CWD}
-	python manage.py webpack
+	python manage.py webpack --extra=--display-error-details
 	mkdir -p ${ASSETS_DIR}
-	python manage.py collectstatic --noinput --clear -i node_modules -i *.jsx ${TAIL}
+	python manage.py collectstatic --noinput --clear -i node_modules -i .tox -i docs ${TAIL}
 	python manage.py assets build ${TAIL}
 	chmod 664 ${ASSETS_DIR}.webassets-cache/*
+
+travis-assets:
+	if [ -d "${ASSETS_DIR}.webassets-cache/" ]; then \
+		echo "eating cache - yum!"; \
+	else \
+		cd ${JS_DIR} && \
+		npm install && \
+		cd ${CWD}; \
+		python manage.py webpack --dev --nowatch; \
+		mkdir -p ${ASSETS_DIR}; \
+		python manage.py collectstatic --noinput --clear -i node_modules -i .tox -i docs ${TAIL}; \
+		python manage.py assets build ${TAIL}; \
+		chmod 664 ${ASSETS_DIR}.webassets-cache/*; \
+	fi
 
 docs:
 	# Make sure that the submodule with docs theme is pulled and up-to-date.
 	git submodule update --init
 	# The following creates the HTML docs.
 	# NOTE: cd and make must be in the same line.
-	cd ${DOCS_DIR}; make SPHINXOPTS="-W -q" html ${TAIL}
+	cd ${DOCS_DIR}; make SPHINXOPTS="-W -q -j 4" html ${TAIL}
 
 docs-review: docs
 	python -mwebbrowser file://$(shell pwd)/${DOCS_DIR}/_build/html/index.html
 
 sprite:
 	glue --sprite-namespace="" --namespace="" ${SPRITE_DIR} --css=${CSS_DIR} --img=${IMAGES_DIR}
+	optipng -o7 ${IMAGES_DIR}/sprite.png
 
 clean:
 	rm -rf ${TEST_ENV_NAME}
@@ -70,8 +85,9 @@ mo:
 mo-all:
 	python setup.py build_mo --all
 
-pep8:
-	@./pootle/tools/pep8.sh travis
+jslint:
+	cd ${JS_DIR} \
+	&& npm run lint
 
 publish-pypi:
 	python setup.py sdist ${FORMATS} upload
@@ -87,7 +103,6 @@ help:
 	@echo "  sprite - create CSS sprite"
 	@echo "  clean - remove any temporal files"
 	@echo "  test - run test suite"
-	@echo "  pep8 - run pep8 checks"
 	@echo "  pot - update the POT translations templates"
 	@echo "  get-translations - retrieve Pootle translations from server (requires ssh config for pootletranslations)"
 	@echo "  linguas - update the LINGUAS file with languages over 80% complete"

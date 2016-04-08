@@ -6,23 +6,22 @@
  * AUTHORS file for copyright and authorship information.
  */
 
-'use strict';
-
 import React from 'react';
-import { PureRenderMixin } from 'react/addons';
+import { PureRenderMixin } from 'react-addons-pure-render-mixin';
 
 import AuthContent from './AuthContent';
 
 
-let AuthProgress = React.createClass({
-  mixins: [PureRenderMixin],
+const AuthProgress = React.createClass({
 
   propTypes: {
     msg: React.PropTypes.string.isRequired,
   },
 
+  mixins: [PureRenderMixin],
+
   render() {
-    let msgStyle = {
+    const msgStyle = {
       textAlign: 'center',
     };
     return (

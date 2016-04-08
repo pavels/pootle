@@ -9,7 +9,6 @@
 
 from functools import wraps
 
-from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied
 from django.core.urlresolvers import reverse
 from django.db import connection
@@ -21,7 +20,7 @@ from pootle_app.models.directory import Directory
 from pootle_app.models.permissions import (check_permission,
                                            get_matching_permissions)
 from pootle_language.models import Language
-from pootle_project.models import Project, ProjectSet, ProjectResource
+from pootle_project.models import Project, ProjectResource, ProjectSet
 from pootle_store.models import Store
 from pootle_translationproject.models import TranslationProject
 from virtualfolder.helpers import extract_vfolder_from_path
@@ -102,10 +101,7 @@ def get_path_obj(func):
             except Project.DoesNotExist:
                 raise Http404
         else:  # No arguments: all user-accessible projects
-            user_projects = Project.accessible_by_user(request.user)
-            user_projects = Project.objects.for_user(request.user) \
-                                           .filter(code__in=user_projects)
-
+            user_projects = Project.objects.for_user(request.user)
             path_obj = ProjectSet(user_projects)
 
         request.ctx_obj = path_obj
@@ -160,14 +156,16 @@ def set_resource(request, path_obj, dir_path, filename):
     if directory is None and not is_404:
         if dir_path:
             try:
-                directory = Directory.objects.live().get(pootle_path=clean_pootle_path)
+                directory = Directory.objects.live().get(
+                    pootle_path=clean_pootle_path)
             except Directory.DoesNotExist:
                 is_404 = True
         else:
             directory = obj_directory
 
     if is_404:  # Try parent directory
-        language_code, project_code, dp, fn = split_pootle_path(clean_pootle_path)
+        language_code, project_code, dp, fn = \
+            split_pootle_path(clean_pootle_path)
         if not filename:
             dir_path = dir_path[:dir_path[:-1].rfind('/') + 1]
 
@@ -208,16 +206,17 @@ def set_project_resource(request, path_obj, dir_path, filename):
     resource_path = dir_path
     pootle_path = ctx_path + dir_path
 
-    # List of disabled TP paths
-    disabled_tps = TranslationProject.objects.disabled().filter(
+    # List of TP paths available for user
+    user_tps = TranslationProject.objects.for_user(request.user)
+    user_tps = user_tps.filter(
         project__code=path_obj.code,
     ).values_list('pootle_path', flat=True)
-    disabled_tps = list(disabled_tps)
-    disabled_tps.append('/templates/')
-    disabled_tps_regex = '^%s' % u'|'.join(disabled_tps)
-    sql_not_regex = 'NOT REGEXP'
+    user_tps = list(path for path in user_tps
+                    if not path.startswith('/templates/'))
+    user_tps_regex = '^%s' % u'|'.join(user_tps)
+    sql_regex = 'REGEXP'
     if connection.vendor == 'postgresql':
-        sql_not_regex = '!~'
+        sql_regex = '~'
 
     if filename:
         query_pootle_path = query_pootle_path + filename
@@ -227,15 +226,15 @@ def set_project_resource(request, path_obj, dir_path, filename):
         resources = Store.objects.live().extra(
             where=[
                 'pootle_store_store.pootle_path LIKE %s',
-                'pootle_store_store.pootle_path ' + sql_not_regex + ' %s',
-            ], params=[query_pootle_path, disabled_tps_regex]
+                'pootle_store_store.pootle_path ' + sql_regex + ' %s',
+            ], params=[query_pootle_path, user_tps_regex]
         ).select_related('translation_project__language')
     else:
         resources = Directory.objects.live().extra(
             where=[
                 'pootle_app_directory.pootle_path LIKE %s',
-                'pootle_app_directory.pootle_path ' + sql_not_regex + ' %s',
-            ], params=[query_pootle_path, disabled_tps_regex]
+                'pootle_app_directory.pootle_path ' + sql_regex + ' %s',
+            ], params=[query_pootle_path, user_tps_regex]
         ).select_related('parent')
 
     if not resources.exists():
@@ -269,8 +268,9 @@ def get_resource(func):
                 if hasattr(request, 'redirect_url'):
                     url = request.redirect_url
                 elif user_choice in ('language', 'resource',):
-                    project = (path_obj if isinstance(path_obj, Project)
-                                        else path_obj.project)
+                    project = (path_obj
+                               if isinstance(path_obj, Project)
+                               else path_obj.project)
                     url = reverse('pootle-project-browse',
                                   args=[project.code, dir_path, filename])
 
@@ -309,9 +309,7 @@ def permission_required(permission_code):
                                      'path_obj')
             setattr(request, attr_name, path_obj)
 
-            User = get_user_model()
-            request.profile = User.get(request.user)
-            request.permissions = get_matching_permissions(request.profile,
+            request.permissions = get_matching_permissions(request.user,
                                                            directory)
 
             if not permission_code:

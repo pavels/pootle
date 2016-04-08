@@ -12,35 +12,33 @@ import os
 
 os.environ['DJANGO_SETTINGS_MODULE'] = 'pootle.settings'
 
-from optparse import make_option
-
-from django.core.management.base import NoArgsCommand
+from django.core.management.base import BaseCommand
 from django.db.models import Max
 
 from pootle.core.models import Revision
 from pootle_store.models import Store, Unit
 
-from . import BaseRunCommand
 
-
-class Command(NoArgsCommand):
+class Command(BaseCommand):
     help = "List languages that were changed since last synchronization"
 
-    option_list = BaseRunCommand.option_list + (
-        make_option('--after-revision', action='store', dest='after_revision',
-                    type=int,
-                    help='Show languages changed after any arbitrary revision'),
-    )
+    def add_arguments(self, parser):
+        parser.add_argument(
+            '--after-revision',
+            action='store',
+            dest='after_revision',
+            type=int,
+            help='Show languages changed after any arbitrary revision',
+        )
 
-    def handle_noargs(self, **options):
+    def handle(self, **options):
         last_known_revision = Revision.get()
 
         if options['after_revision'] is not None:
             after_revision = int(options['after_revision'])
         else:
             after_revision = Store.objects.all().aggregate(
-                    Max('last_sync_revision')
-                )['last_sync_revision__max'] or -1
+                Max('last_sync_revision'))['last_sync_revision__max'] or -1
 
         self.stderr.write(
             'Will show languages changed between revisions %s (exclusive) '
@@ -48,22 +46,22 @@ class Command(NoArgsCommand):
             (after_revision, last_known_revision)
         )
 
-        # if the requested revision is the same or is greater than
-        # the last known one, return nothing
+        # if the requested revision is the same or is greater than the last
+        # known one, return nothing
         if after_revision >= last_known_revision:
             self.stderr.write('(no known changes)')
             return
 
         q = Unit.objects.filter(
-                revision__gt=after_revision
-            ).values(
-                'store__translation_project__language__code',
-            ).order_by(
-                'store__translation_project__language__code',
-            ).distinct()
+            revision__gt=after_revision
+        ).values(
+            'store__translation_project__language__code',
+        ).order_by(
+            'store__translation_project__language__code',
+        ).distinct()
 
         languages = q.values_list('store__translation_project__language__code',
                                   flat=True)
 
         # list languages separated by comma for easy parsing
-        print ','.join(languages)
+        self.stdout.write(','.join(languages))

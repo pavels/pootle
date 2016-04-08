@@ -12,21 +12,24 @@
 import logging
 import os
 
+from translate.misc.multistring import multistring
+
 from django.db import models
 from django.db.models.fields.files import FieldFile, FileField
 
-from translate.misc.multistring import multistring
 
-################# String #############################
+# # # # # # # # # String # # # # # # # # # # # # # # #
 
 SEPARATOR = "__%$%__%$%__%$%__"
 PLURAL_PLACEHOLDER = "__%POOTLE%_$NUMEROUS$__"
+
 
 def list_empty(strings):
     """check if list is exclusively made of empty strings.
 
     useful for detecting empty multistrings and storing them as a
-    simple empty string in db."""
+    simple empty string in db.
+    """
     for string in strings:
         if len(string) > 0:
             return False
@@ -35,7 +38,8 @@ def list_empty(strings):
 
 def to_db(value):
     """Flatten the given value (string, list of plurals or multistring) into
-    the database string representation."""
+    the database string representation.
+    """
     if value is None:
         return None
     elif isinstance(value, multistring):
@@ -76,7 +80,8 @@ def to_python(value):
 
 
 class MultiStringField(models.Field):
-    description = "a field imitating translate.misc.multistring used for plurals"
+    description = \
+        "a field imitating translate.misc.multistring used for plurals"
     __metaclass__ = models.SubfieldBase
 
     def __init__(self, *args, **kwargs):
@@ -95,17 +100,19 @@ class MultiStringField(models.Field):
         if (lookup_type in ('exact', 'iexact') or
             not isinstance(value, basestring)):
             value = self.get_prep_value(value)
-        return super(MultiStringField, self) \
-                .get_prep_lookup(lookup_type, value)
+        return super(MultiStringField, self).get_prep_lookup(lookup_type,
+                                                             value)
 
 
-################# File ###############################
+# # # # # # # # # File # # # # # # # # # # # # # # # #
 
 
 class StoreTuple(object):
     """Encapsulates toolkit stores in the in memory cache, needed
     since LRUCachingDict is based on a weakref.WeakValueDictionary
-    which cannot reference normal tuples"""
+    which cannot reference normal tuples
+    """
+
     def __init__(self, store, mod_info, realpath):
         self.store = store
         self.mod_info = mod_info
@@ -114,7 +121,9 @@ class StoreTuple(object):
 
 class TranslationStoreFieldFile(FieldFile):
     """FieldFile is the file-like object of a FileField, that is found in a
-    TranslationStoreField."""
+    TranslationStoreField.
+    """
+
     from translate.misc.lru import LRUCachingDict
     from django.conf import settings
 
@@ -132,7 +141,12 @@ class TranslationStoreFieldFile(FieldFile):
     def _get_realpath(self):
         """Return realpath resolving symlinks if necessary."""
         if not hasattr(self, "_realpath"):
-            self._realpath = os.path.realpath(self.path)
+            # Django's db.models.fields.files.FieldFile raises ValueError if
+            # if the file field has no name - and tests "if self" to check
+            if self:
+                self._realpath = os.path.realpath(self.path)
+            else:
+                self._realpath = ''
         return self._realpath
 
     @property
@@ -146,14 +160,19 @@ class TranslationStoreFieldFile(FieldFile):
     @property
     def store(self):
         """Get translation store from dictionary cache, populate if store not
-        already cached."""
+        already cached.
+        """
         self._update_store_cache()
         return self._store_tuple.store
 
     def _update_store_cache(self):
         """Add translation store to dictionary cache, replace old cached
-        version if needed."""
-        mod_info = self.getpomtime()
+        version if needed.
+        """
+        if self.exists():
+            mod_info = self.getpomtime()
+        else:
+            mod_info = 0
         if (not hasattr(self, "_store_tuple") or
             self._store_tuple.mod_info != mod_info):
             try:
@@ -180,7 +199,7 @@ class TranslationStoreFieldFile(FieldFile):
             if self._store_tuple.mod_info != mod_info:
                 self._store_tuple.mod_info = mod_info
         else:
-            #FIXME: do we really need that?
+            # FIXME: do we really need that?
             self._update_store_cache()
 
     def _delete_store_cache(self):
@@ -199,8 +218,9 @@ class TranslationStoreFieldFile(FieldFile):
         return os.path.exists(self.realpath)
 
     def savestore(self):
-        """Saves to temporary file then moves over original file. This
-        way we avoid the need for locking."""
+        """Saves to temporary file then moves over original file. This way we
+        avoid the need for locking.
+        """
         import shutil
         from pootle_misc import ptempfile as tempfile
         tmpfile, tmpfilename = tempfile.mkstemp(suffix=self.filename)
@@ -210,7 +230,8 @@ class TranslationStoreFieldFile(FieldFile):
         self._touch_store_cache()
 
     def save(self, name, content, save=True):
-        #FIXME: implement save to tmp file then move instead of directly saving
+        # FIXME: implement save to tmp file then move instead of directly
+        # saving
         super(TranslationStoreFieldFile, self).save(name, content, save)
         self._delete_store_cache()
 
@@ -222,18 +243,21 @@ class TranslationStoreFieldFile(FieldFile):
 
 class TranslationStoreField(FileField):
     """This is the field class to represent a FileField in a model that
-    represents a translation store."""
+    represents a translation store.
+    """
 
     attr_class = TranslationStoreFieldFile
 
     def __init__(self, ignore=None, **kwargs):
         """ignore: postfix to be stripped from filename when trying to
-        determine file format for parsing, useful for .pending files"""
+        determine file format for parsing, useful for .pending files
+        """
         self.ignore = ignore
         super(TranslationStoreField, self).__init__(**kwargs)
 
     def deconstruct(self):
-        name, path, args, kwargs = super(TranslationStoreField, self).deconstruct()
+        name, path, args, kwargs = super(TranslationStoreField,
+                                         self).deconstruct()
         if self.ignore is not None:
             kwargs['ignore'] = self.ignore
         return name, path, args, kwargs

@@ -57,17 +57,20 @@ def export(request):
                 try:
                     data = store.serialize()
                 except Exception as e:
-                    logging.error("Could not serialize %r: %s", store.pootle_path, e)
+                    logging.error("Could not serialize %r: %s",
+                                  store.pootle_path, e)
                     continue
                 zf.writestr(prefix + store.pootle_path, data)
 
         return download(f.getvalue(), "%s.zip" % (prefix), "application/zip")
 
 
-def handle_upload_form(request):
+def handle_upload_form(request, project):
     """Process the upload form."""
     if request.method == "POST" and "file" in request.FILES:
         upload_form = UploadForm(request.POST, request.FILES)
+        project_filetypes = [project.localfiletype,
+                             project.get_template_filetype()]
 
         if upload_form.is_valid():
             django_file = request.FILES["file"]
@@ -78,6 +81,9 @@ def handle_upload_form(request):
                             if path.endswith("/"):
                                 # is a directory
                                 continue
+                            ext = os.path.splitext(path)[1].strip(".")
+                            if ext not in project_filetypes:
+                                continue
                             with zf.open(path, "r") as f:
                                 import_file(f, user=request.user)
                 else:
@@ -86,7 +92,7 @@ def handle_upload_form(request):
                     django_file.seek(0)
                     import_file(django_file, user=request.user)
             except Exception as e:
-                upload_form.add_error("file", e.message)
+                upload_form.add_error("file", e)
                 return {
                     "upload_form": upload_form,
                 }

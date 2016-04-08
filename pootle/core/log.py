@@ -31,6 +31,7 @@ SCORE_CHANGED = 'SC'
 PAID_TASK_ADDED = 'PTA'
 PAID_TASK_DELETED = 'PTD'
 
+
 def log(message):
     logger = logging.getLogger('action')
     logger.info(message)
@@ -47,7 +48,8 @@ def action_log(*args, **kwargs):
     tr = tr.replace("\n", "\\\n")
     d['translation'] = tr
 
-    msg = u"%(user)s\t%(action)s\t%(lang)s\t%(unit)s\t%(path)s\t%(translation)s" % d
+    msg = (u"%(user)s\t%(action)s\t%(lang)s\t"
+           "%(unit)s\t%(path)s\t%(translation)s" % d)
 
     logger.info(msg)
 
@@ -60,24 +62,22 @@ def cmd_log(*args, **kwargs):
     fn = settings.LOGGING.get('handlers').get('log_action').get('filename')
     dft = settings.LOGGING.get('formatters').get('action').get('datefmt')
 
+    with open(fn, 'a') as logfile:
+        cmd = ' '.join(args)
 
-    logfile = open(fn, 'a')
-    cmd = ' '.join(args)
+        message = "%(user)s\t%(action)s\t%(cmd)s" % {
+            'user': 'system',
+            'action': CMD_EXECUTED,
+            'cmd': cmd
+        }
 
-    message = "%(user)s\t%(action)s\t%(cmd)s" % {
-        'user': 'system',
-        'action': CMD_EXECUTED,
-        'cmd': cmd
-    }
-
-    from datetime import datetime
-    now = datetime.now()
-    d = {
-         'message': message,
-         'asctime': now.strftime(dft)
-    }
-    logfile.write("[%(asctime)s]\t%(message)s\n" % d)
-    logfile.close()
+        from datetime import datetime
+        now = datetime.now()
+        d = {
+            'message': message,
+            'asctime': now.strftime(dft)
+        }
+        logfile.write("[%(asctime)s]\t%(message)s\n" % d)
 
 
 def store_log(*args, **kwargs):

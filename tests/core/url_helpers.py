@@ -7,8 +7,8 @@
 # or later license. See the LICENSE file for a copy of the license and the
 # AUTHORS file for copyright and authorship information.
 
-from pootle.core.url_helpers import (urljoin, get_all_pootle_paths,
-                                     get_editor_filter, split_pootle_path)
+from pootle.core.url_helpers import (get_all_pootle_paths, get_editor_filter,
+                                     split_pootle_path, urljoin)
 
 
 def test_urljoin():
@@ -57,11 +57,12 @@ def test_get_editor_filter():
     assert get_editor_filter(state='untranslated', sort='newest') == \
         '#filter=untranslated&sort=newest'
     assert get_editor_filter(sort='newest') == '#sort=newest'
-    assert get_editor_filter(state='all', search='Foo', sfields='locations') == \
-        '#filter=all'
+    assert get_editor_filter(state='all', search='Foo',
+                             sfields='locations') == '#filter=all'
     assert get_editor_filter(search='Foo', sfields='locations') == \
         '#search=Foo&sfields=locations'
     assert get_editor_filter(search='Foo', sfields=['locations', 'notes']) == \
         '#search=Foo&sfields=locations,notes'
-    assert get_editor_filter(search='Foo: bar.po\nID: 1', sfields='locations') == \
+    assert get_editor_filter(search='Foo: bar.po\nID: 1',
+                             sfields='locations') == \
         '#search=Foo%3A+bar.po%0AID%3A+1&sfields=locations'

@@ -6,40 +6,38 @@
  * AUTHORS file for copyright and authorship information.
  */
 
-'use strict';
-
-var $ = require('jquery');
-var Backbone = require('backbone');
+import $ from 'jquery';
+import Backbone from 'backbone';
 
 
-var sel = {
+const sel = {
   data: {
-    toggle: '[data-action="toggle"]'
+    toggle: '[data-action="toggle"]',
   },
   target: '.dropdown-menu',
-  targetItems : 'li:not(.menu-divider) a',
-  open: 'show-dropdown'
+  targetItems: 'li:not(.menu-divider) a',
+  open: 'show-dropdown',
 };
 
-var keys = {
+const keys = {
   ESC: 27,
   UP: 38,
-  DOWN: 40
+  DOWN: 40,
 };
 
 
-var DropdownView = Backbone.View.extend({
+const DropdownView = Backbone.View.extend({
 
-  events: function () {
-    var events = {
-      'keydown': 'onKey'
+  events() {
+    const events = {
+      keydown: 'onKey',
     };
-    events['click ' + sel.data.toggle] = 'toggle';
+    events[`click ${sel.data.toggle}`] = 'toggle';
 
     return events;
   },
 
-  initialize: function () {
+  initialize() {
     this.$toggle = this.$(sel.data.toggle);
     this.$target = this.$(sel.target);
 
@@ -48,7 +46,7 @@ var DropdownView = Backbone.View.extend({
     $(document).on('click.PTL.dropdown', this.hide.bind(this));
   },
 
-  onKey: function (e) {
+  onKey(e) {
     // Avoid hijacking browser keyboard shortcuts when not shown
     if (!this.isVisible()) {
       return true;
@@ -63,13 +61,13 @@ var DropdownView = Backbone.View.extend({
     }
 
     if ([keys.UP, keys.DOWN].indexOf(e.which) !== -1) {
-      var $items = this.$target.find(sel.targetItems);
+      const $items = this.$target.find(sel.targetItems);
 
       if (!$items.length) {
         return false;
       }
 
-      var index = $items.index($items.filter(':focus'));
+      let index = $items.index($items.filter(':focus'));
 
       if (e.which === keys.UP && index > 0) {
         index--;
@@ -83,21 +81,27 @@ var DropdownView = Backbone.View.extend({
 
       $items.eq(index).trigger('focus');
     }
+
+    return true;
   },
 
-  isVisible: function () {
+  isVisible() {
     return this.$el.hasClass(sel.open);
   },
 
-  show: function () {
-    !this.isVisible() && this.$el.addClass(sel.open);
+  show() {
+    if (!this.isVisible()) {
+      this.$el.addClass(sel.open);
+    }
   },
 
-  hide: function () {
-    this.isVisible() && this.$el.removeClass(sel.open);
+  hide() {
+    if (this.isVisible()) {
+      this.$el.removeClass(sel.open);
+    }
   },
 
-  toggle: function (e) {
+  toggle(e) {
     e.preventDefault();
     e.stopPropagation();
 
@@ -108,19 +112,18 @@ var DropdownView = Backbone.View.extend({
     } else {
       this.$toggle.blur();
     }
-  }
+  },
 
 });
 
 
-var dropdown = {
+const dropdown = {
 
-  init: function (el) {
-    el = el instanceof $ ? el : $(el);
-    return new DropdownView({el: el});
-  }
+  init(el) {
+    return new DropdownView({ el: el instanceof $ ? el : $(el) });
+  },
 
 };
 
 
-module.exports = dropdown;
+export default dropdown;

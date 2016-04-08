@@ -10,30 +10,59 @@
 import datetime
 import logging
 
-from optparse import make_option
-
-from django.core.management.base import BaseCommand, NoArgsCommand
+from django.core.management.base import BaseCommand
 
 from pootle.runner import set_sync_mode
 from pootle_project.models import Project
 from pootle_translationproject.models import TranslationProject
 
 
-class PootleCommand(NoArgsCommand):
+class SkipChecksMixin(object):
+    def check(self, app_configs=None, tags=None, display_num_errors=False,
+              include_deployment_checks=False):
+        skip_tags = getattr(self, 'skip_system_check_tags', None)
+        if skip_tags is not None:
+            from django.core.checks.registry import registry
+            tags = registry.tags_available() - set(skip_tags)
+
+        super(SkipChecksMixin, self).check(
+            app_configs=app_configs,
+            tags=tags,
+            display_num_errors=display_num_errors,
+            include_deployment_checks=include_deployment_checks)
+
+
+class PootleCommand(BaseCommand):
     """Base class for handling recursive pootle store management commands."""
-    shared_option_list = (
-        make_option('--project', action='append', dest='projects',
-                    help='Project to refresh'),
-        make_option('--language', action='append', dest='languages',
-                    help='Language to refresh'),
-        make_option("--noinput", action="store_true", default=False,
-                    help=u"Never prompt for input"),
-        make_option("--no-rq", action="store_true", default=False,
-                    help=(u"Run all jobs in a single process, without "
-                          "using rq workers")),
-        )
-    option_list = NoArgsCommand.option_list + shared_option_list
+
     process_disabled_projects = False
+
+    def add_arguments(self, parser):
+        parser.add_argument(
+            '--project',
+            action='append',
+            dest='projects',
+            help='Project to refresh',
+        )
+        parser.add_argument(
+            '--language',
+            action='append',
+            dest='languages',
+            help='Language to refresh',
+        )
+        parser.add_argument(
+            "--noinput",
+            action="store_true",
+            default=False,
+            help=u"Never prompt for input",
+        )
+        parser.add_argument(
+            "--no-rq",
+            action="store_true",
+            default=False,
+            help=(u"Run all jobs in a single process, without "
+                  "using rq workers"),
+        )
 
     def __init__(self, *args, **kwargs):
         self.languages = []
@@ -73,17 +102,17 @@ class PootleCommand(NoArgsCommand):
                     logging.exception(u"Failed to run %s over %s",
                                       self.name, store.pootle_path)
 
-    def handle_noargs(self, **options):
+    def handle(self, **options):
         # adjust debug level to the verbosity option
-        verbosity = int(options.get('verbosity', 1))
         debug_levels = {
             0: logging.ERROR,
             1: logging.WARNING,
             2: logging.INFO,
             3: logging.DEBUG
         }
-        debug_level = debug_levels.get(verbosity, logging.DEBUG)
-        logging.getLogger().setLevel(debug_level)
+        logging.getLogger().setLevel(
+            debug_levels.get(options['verbosity'], logging.DEBUG)
+        )
 
         # reduce size of parse pool early on
         self.name = self.__class__.__module__.split('.')[-1]
@@ -107,8 +136,8 @@ class PootleCommand(NoArgsCommand):
         logging.info('All done for %s in %s', self.name, end - start)
 
     def handle_all(self, **options):
-        if options.get("no_rq", False):
-            set_sync_mode(options.get('noinput', False))
+        if options["no_rq"]:
+            set_sync_mode(options['noinput'])
 
         if self.process_disabled_projects:
             project_query = Project.objects.all()
@@ -119,7 +148,7 @@ class PootleCommand(NoArgsCommand):
             project_query = project_query.filter(code__in=self.projects)
 
         for project in project_query.iterator():
-            tp_query = project.translationproject_set \
+            tp_query = project.translationproject_set.live() \
                               .order_by('language__code')
 
             if self.languages:
@@ -127,31 +156,3 @@ class PootleCommand(NoArgsCommand):
 
             for tp in tp_query.iterator():
                 self.do_translation_project(tp, **options)
-
-
-class BaseRunCommand(BaseCommand):
-    """Base class to build new server runners.
-
-    Based on code from `django-shoes
-    <https://bitbucket.org/mlzboy/django-shoes/>`_."""
-    hostport_option_list = (
-        make_option('--host', action='store', dest='host', default='127.0.0.1',
-            help='Hostname to listen on.'),
-        make_option('--port', action='store', dest='port', default=8000,
-            type=int, help='The TCP port to listen on.'),
-    )
-
-    option_list = BaseCommand.option_list + hostport_option_list
-
-    def handle(self, *args, **options):
-        return self.serve_forever(*args, **options)
-
-    def get_app(self):
-        from django.contrib.staticfiles.handlers import StaticFilesHandler
-        from django.core.handlers.wsgi import WSGIHandler
-
-        app = StaticFilesHandler(WSGIHandler())
-        return app
-
-    def serve_forever(self, *args, **kwargs):
-        raise NotImplementedError

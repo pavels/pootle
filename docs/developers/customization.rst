@@ -94,9 +94,9 @@ template tag.
 Customizing CSS
 ---------------
 
-Create any needed files under your custom :setting:`STATICFILES_DIRS` and reference
-them from your custom templates using the ``{% static %}`` template tag. You
-can also inline styles in your templates as usual.
+Create any needed files under your custom :setting:`STATICFILES_DIRS` and
+reference them from your custom templates using the ``{% static %}`` template
+tag. You can also inline styles in your templates as usual.
 
 
 .. _customization#images:
@@ -104,8 +104,8 @@ can also inline styles in your templates as usual.
 Customizing images
 ------------------
 
-You should put your custom images in your custom :setting:`STATICFILES_DIRS`. From CSS
-you would just reference them using a relative path.
+You should put your custom images in your custom :setting:`STATICFILES_DIRS`.
+From CSS you would just reference them using a relative path.
 
 On the contrary, if you want to reference images from HTML code or inline CSS,
 you should use the ``{% static %}`` template tag.
@@ -119,10 +119,10 @@ Installing JS build libraries
 Before you can rebuild your static assets with any CSS or JavaScript
 customisations, you will need to install some Node.js libraries.
 
-Before proceeding please make sure you have
-:ref:`Node.js and npm installed in your system <requirements#customize-static>`.
+Before proceeding please make sure you have :ref:`Node.js and npm installed in
+your system <requirements#customize-static>`.
 
-.. code-block:: bash
+.. code-block:: console
 
    (env) $ cd $pootle_dir
    (env) $ cd pootle/static/js/
@@ -136,7 +136,7 @@ Before proceeding please make sure you have
 Rebuilding assets after customization
 -------------------------------------
 
-Before rebuilding your assets for the first time you must :ref:`install the 
+Before rebuilding your assets for the first time you must :ref:`install the
 JavaScript build libraries <customization#install-node-libs>`.
 
 After doing any customizations, you will need to regenerate any modified
@@ -146,8 +146,8 @@ consumption.
 You will need to activate your virtual environment before running these
 commands.
 
-.. code-block:: bash
+.. code-block:: console
 
    (env) $ pootle webpack
-   (env) $ pootle collectstatic --noinput --clear -i node_modules -i *.jsx
+   (env) $ pootle collectstatic --noinput --clear -i node_modules
    (env) $ pootle assets build

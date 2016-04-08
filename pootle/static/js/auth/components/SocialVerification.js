@@ -6,27 +6,28 @@
  * AUTHORS file for copyright and authorship information.
  */
 
-'use strict';
-
 import assign from 'object-assign';
 import React from 'react';
 
-import { FormElement } from 'components/forms';
-import { FormMixin } from 'mixins/forms';
+import FormElement from 'components/FormElement';
+import FormMixin from 'mixins/FormMixin';
 
+import { gotoScreen, verifySocial } from '../actions';
 import AuthProgress from './AuthProgress';
 
 
-let SocialVerification = React.createClass({
-  mixins: [FormMixin],
+const SocialVerification = React.createClass({
 
   propTypes: {
+    dispatch: React.PropTypes.func.isRequired,
     email: React.PropTypes.string.isRequired,
     formErrors: React.PropTypes.object.isRequired,
     isLoading: React.PropTypes.bool.isRequired,
     providerName: React.PropTypes.string.isRequired,
+    redirectTo: React.PropTypes.string,
   },
 
+  mixins: [FormMixin],
 
   getInitialState() {
     // XXX: initialData required by `FormMixin`; this is really OBSCURE
@@ -40,7 +41,7 @@ let SocialVerification = React.createClass({
 
   componentWillReceiveProps(nextProps) {
     if (this.state.errors !== nextProps.formErrors) {
-      this.setState({errors: nextProps.formErrors});
+      this.setState({ errors: nextProps.formErrors });
     }
   },
 
@@ -49,12 +50,12 @@ let SocialVerification = React.createClass({
 
   handleRequestPasswordReset(e) {
     e.preventDefault();
-    this.props.flux.getActions('auth').gotoScreen('requestPasswordReset');
+    this.props.dispatch(gotoScreen('requestPasswordReset'));
   },
 
   handleFormSubmit(e) {
     e.preventDefault();
-    this.props.flux.getActions('auth').verifySocial(this.state.formData);
+    this.props.dispatch(verifySocial(this.state.formData));
   },
 
 
@@ -69,32 +70,38 @@ let SocialVerification = React.createClass({
 
   render() {
     if (this.props.redirectTo) {
-      return <AuthProgress msg={gettext('Signed in. Redirecting...')} />
+      return <AuthProgress msg={gettext('Signed in. Redirecting...')} />;
     }
 
-    let { errors } = this.state;
-    let { formData } = this.state;
+    const { errors } = this.state;
+    const { formData } = this.state;
 
-    let verificationMsg = interpolate(
-      gettext('We found a user with <span>%s</span> email in our system. Please provide the password to finish the sign in procedure. This is a one-off procedure, which will establish a link between your Pootle and %s accounts.'),
+    const verificationMsg = interpolate(
+      gettext(
+        'We found a user with <span>%s</span> email in our system. Please ' +
+        'provide the password to finish the sign in procedure. This is a ' +
+        'one-off procedure, which will establish a link between your ' +
+        'Pootle and %s accounts.'
+      ),
       [this.props.email, this.props.providerName]
     );
 
     return (
       <div className="actions">
-        <p dangerouslySetInnerHTML={{__html: verificationMsg}} />
+        <p dangerouslySetInnerHTML={{ __html: verificationMsg }} />
         <div>
           <form
             method="post"
-            onSubmit={this.handleFormSubmit}>
+            onSubmit={this.handleFormSubmit}
+          >
             <div className="fields">
               <FormElement
                 type="password"
-                attribute="password"
                 label={gettext('Password')}
                 handleChange={this.handleChange}
-                formData={formData}
-                errors={errors}
+                name="password"
+                errors={errors.password}
+                value={formData.password}
               />
               <div className="actions password-forgotten">
                 <a href="#" onClick={this.handleRequestPasswordReset}>
@@ -117,7 +124,7 @@ let SocialVerification = React.createClass({
         </div>
       </div>
     );
-  }
+  },
 
 });
 

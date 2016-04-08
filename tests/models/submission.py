@@ -11,11 +11,11 @@ import pytest
 
 from django.utils import timezone
 
-from pootle_statistics.models import (Submission,
-                                      SubmissionTypes, SubmissionFields)
-from pootle_store.util import TRANSLATED, UNTRANSLATED
+from pytest_pootle.factories import SubmissionFactory
 
-from ..factories import SubmissionFactory
+from pootle_statistics.models import (Submission, SubmissionFields,
+                                      SubmissionTypes)
+from pootle_store.util import TRANSLATED, UNTRANSLATED
 
 
 def _create_comment_submission(unit, user, creation_time, comment):
@@ -34,9 +34,10 @@ def _create_comment_submission(unit, user, creation_time, comment):
 
 
 @pytest.mark.django_db
-def test_submission_ordering(en_tutorial_po, member):
+def test_submission_ordering(en_tutorial_po, member, no_submissions):
     """Submissions with same creation_time should order by pk
     """
+
     at_time = timezone.now()
     unit = en_tutorial_po.units[0]
     _create_comment_submission(unit, member, at_time, "Comment 3")
@@ -104,8 +105,8 @@ def test_needs_scorelog():
     )
     assert not submission.needs_scorelog()
 
-    # Changing other fields (or even STATE, in a different direction)
-    # should need to record a score log
+    # Changing other fields (or even STATE, in a different direction) should
+    # need to record a score log
     submission = SubmissionFactory.build(
         field=SubmissionFields.STATE,
         type=SubmissionTypes.NORMAL,

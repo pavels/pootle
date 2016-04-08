@@ -6,12 +6,13 @@
  * AUTHORS file for copyright and authorship information.
  */
 
-'use strict';
-
-import FluxComponent from 'flummox/component';
 import $ from 'jquery';
 import assign from 'object-assign';
 import React from 'react';
+import ReactDOM from 'react-dom';
+import { Provider } from 'react-redux';
+
+import Auth from './containers/Auth';
 
 
 const mountNodeSelector = '.js-auth';
@@ -22,7 +23,7 @@ const commonProps = {
 };
 
 
-module.exports = {
+export default {
 
   init(props) {
     $(document).on('click', '.js-login', (e) => {
@@ -33,29 +34,18 @@ module.exports = {
   },
 
   open(props) {
-    // FIXME: ugly workaround to avoid crashing: some globals
-    // (`gettext()`, `l()`) are being used in these modules, so for the
-    // time being we delay their import here (note they are CommonJS
-    // requires).
-    // The actual fix is getting rid of those globals, and only then we'll
-    // be able to move these two imports to the top of the module.
-    let Flux = require('./flux');
-    let AuthController = require('./components/AuthController');
+    const newProps = assign({}, commonProps, props);
 
-    let flux = new Flux();
-    let newProps = assign({}, commonProps, props);
-
-    let AuthApp = (
-      <FluxComponent flux={flux} connectToStores={['auth']}>
-        <AuthController onClose={this.close} {...newProps} />
-      </FluxComponent>
+    ReactDOM.render(
+      <Provider store={PTL.store}>
+        <Auth onClose={this.close} {...newProps} />
+      </Provider>,
+      document.querySelector(mountNodeSelector)
     );
-
-    React.render(AuthApp, document.querySelector(mountNodeSelector));
   },
 
   close() {
-    React.unmountComponentAtNode(document.querySelector(mountNodeSelector));
+    ReactDOM.unmountComponentAtNode(document.querySelector(mountNodeSelector));
   },
 
 };

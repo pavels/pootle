@@ -7,7 +7,7 @@
  */
 
 import React, { PropTypes } from 'react';
-import { PureRenderMixin } from 'react/addons';
+import { PureRenderMixin } from 'react-addons-pure-render-mixin';
 import _ from 'underscore';
 
 import Avatar from 'components/Avatar';
@@ -15,7 +15,6 @@ import TimeSince from 'components/TimeSince';
 
 
 const UserEvent = React.createClass({
-  mixins: [PureRenderMixin],
 
   propTypes: {
     displayDatetime: PropTypes.string.isRequired,
@@ -31,6 +30,8 @@ const UserEvent = React.createClass({
     translationActionType: PropTypes.number,
     username: PropTypes.string,
   },
+
+  mixins: [PureRenderMixin],
 
   getActionText() {
     const { checkName } = this.props;
@@ -70,32 +71,32 @@ const UserEvent = React.createClass({
      */
 
     if (type === 2) {
-      html = gettext('removed translation for ${sourceString}');
+      html = gettext(`removed translation for ${sourceString}`);
     } else if (type === 3) {
-      html = gettext('accepted suggestion for ${sourceString}');
+      html = gettext(`accepted suggestion for ${sourceString}`);
     } else if (type === 4) {
       html = gettext('uploaded file');
     } else if (type === 6) {
-      html = gettext('muted ${check} for ${sourceString}');
+      html = gettext(`muted ${check} for ${sourceString}`);
     } else if (type === 7) {
-      html = gettext('unmuted ${check} for ${sourceString}');
+      html = gettext(`unmuted ${check} for ${sourceString}`);
     } else if (type === 8) {
-      html = gettext('added suggestion for ${sourceString}');
+      html = gettext(`added suggestion for ${sourceString}`);
     } else if (type === 9) {
-      html = gettext('rejected suggestion for ${sourceString}');
+      html = gettext(`rejected suggestion for ${sourceString}`);
     } else if (type === 1 || type === 5) {
       if (translationActionType === 0) {
-        html = gettext('translated ${sourceString}');
+        html = gettext(`translated ${sourceString}`);
       } else if (translationActionType === 1) {
-        html = gettext('edited ${sourceString}');
+        html = gettext(`edited ${sourceString}`);
       } else if (translationActionType === 2) {
-        html = gettext('pre-translated ${sourceString}');
+        html = gettext(`pre-translated ${sourceString}`);
       } else if (translationActionType === 3) {
-        html = gettext('removed translation for ${sourceString}');
+        html = gettext(`removed translation for ${sourceString}`);
       } else if (translationActionType === 4) {
-        html = gettext('reviewed ${sourceString}');
+        html = gettext(`reviewed ${sourceString}`);
       } else if (translationActionType === 5) {
-        html = gettext('marked as needs work ${sourceString}');
+        html = gettext(`marked as needs work ${sourceString}`);
       }
     }
 
@@ -105,8 +106,6 @@ const UserEvent = React.createClass({
   },
 
   render() {
-    const actionText = this.getActionText();
-
     return (
       <div className="last-action">
         <Avatar
@@ -125,7 +124,7 @@ const UserEvent = React.createClass({
         />
       </div>
     );
-  }
+  },
 
 });
 

@@ -9,12 +9,12 @@
 
 import os
 import sys
-from argparse import ArgumentParser, SUPPRESS
+from argparse import SUPPRESS, ArgumentParser
 
 from django.conf import settings
 from django.core import management
 
-import syspath_override
+import syspath_override  # noqa
 
 from .core.utils.redis_rq import rq_workers_are_running
 
@@ -78,7 +78,7 @@ def init_settings(settings_filepath, template_filename,
         'sqlite': 'sqlite3',
         'mysql': 'mysql',
         'postgresql': 'postgresql_psycopg2',
-        }[db]
+    }[db]
 
     context = {
         "default_key": ("'%s'"
@@ -93,7 +93,8 @@ def init_settings(settings_filepath, template_filename,
 
     with open(settings_filepath, 'w') as settings:
         with open(template_filename) as template:
-            settings.write(template.read() % context)
+            settings.write(
+                (template.read().decode("utf8") % context).encode("utf8"))
 
 
 def init_command(parser, settings_template, args):
@@ -106,10 +107,11 @@ def init_command(parser, settings_template, args):
 
     src_dir = os.path.abspath(os.path.dirname(__file__))
     add_help_to_parser(parser)
-    parser.add_argument("--db", default="sqlite",
+    parser.add_argument("--db",
+                        default="sqlite",
+                        choices=['sqlite', 'mysql', 'postgresql'],
                         help=(u"Use the specified database backend (default: "
-                              u"'sqlite'; other options: 'mysql', "
-                              u"'postgresql')."))
+                              u"%(default)s)."))
     parser.add_argument("--db-name", default="",
                         help=(u"Database name (default: 'pootledb') or path "
                               u"to database file if using sqlite (default: "
@@ -138,11 +140,6 @@ def init_command(parser, settings_template, args):
             print("File already exists, not overwriting.")
             exit(2)
 
-    if args.db not in ["mysql", "postgresql", "sqlite"]:
-        raise management.CommandError("Unrecognised database '%s': should "
-                                      "be one of 'sqlite', 'mysql' or "
-                                      "'postgresql'" % args.db)
-
     try:
         init_settings(config_path, settings_template,
                       db=args.db, db_name=args.db_name, db_user=args.db_user,
@@ -166,8 +163,8 @@ def set_sync_mode(noinput=False):
         redis_warning = ("\nYou currently have RQ workers running.\n\n"
                          "Running in synchronous mode may conflict with jobs "
                          "that are dispatched to your workers.\n\n"
-                         "It is safer to stop any workers before using synchronous "
-                         "commands.\n\n")
+                         "It is safer to stop any workers before using "
+                         "synchronous commands.\n\n")
         if noinput:
             print("Warning: %s" % redis_warning)
         else:
@@ -195,17 +192,15 @@ def configure_app(project, config_path, django_settings_module, runner_name):
     settings_envvar = project.upper() + '_SETTINGS'
 
     # Normalize path and expand ~ constructions
-    config_path = os.path.normpath(os.path.abspath(
-            os.path.expanduser(config_path),
-        )
-    )
+    config_path = os.path.normpath(
+        os.path.abspath(os.path.expanduser(config_path),))
 
     if not (os.path.exists(config_path) or
             os.environ.get(settings_envvar, None)):
         print(u"Configuration file does not exist at %r or "
               u"%r environment variable has not been set.\n"
               u"Use '%s init' to initialize the configuration file." %
-                (config_path, settings_envvar, runner_name))
+              (config_path, settings_envvar, runner_name))
         sys.exit(2)
 
     os.environ.setdefault(settings_envvar, config_path)
@@ -235,14 +230,24 @@ def run_app(project, default_settings_path, settings_template,
     args, remainder = parser.parse_known_args(sys.argv[1:])
 
     # Add pootle args
-    parser.add_argument("--config",
-                        default=default_settings_path,
-                        help=u"Use the specified configuration file.")
-    parser.add_argument("--noinput", action="store_true", default=False,
-                        help=u"Never prompt for input")
-    parser.add_argument("--no-rq", action="store_true", default=False,
-                        help=(u"Run all jobs in a single process, without "
-                              "using rq workers"))
+    parser.add_argument(
+        "--config",
+        default=default_settings_path,
+        help=u"Use the specified configuration file.",
+    )
+    parser.add_argument(
+        "--noinput",
+        action="store_true",
+        default=False,
+        help=u"Never prompt for input",
+    )
+    parser.add_argument(
+        "--no-rq",
+        action="store_true",
+        default=False,
+        help=(u"Run all jobs in a single process, without "
+              "using rq workers"),
+    )
 
     # Parse the init command by hand to prevent raising a SystemExit while
     # parsing

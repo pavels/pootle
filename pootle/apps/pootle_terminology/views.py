@@ -7,6 +7,7 @@
 # or later license. See the LICENSE file for a copy of the license and the
 # AUTHORS file for copyright and authorship information.
 
+from django.core.urlresolvers import reverse
 from django.shortcuts import render
 
 from pootle.core.decorators import get_path_obj, permission_required
@@ -42,6 +43,15 @@ def manage(request, translation_project):
     ctx = {
         'page': 'admin-terminology',
 
+        'browse_url': reverse('pootle-tp-browse', kwargs={
+            'language_code': translation_project.language.code,
+            'project_code': translation_project.project.code,
+        }),
+        'translate_url': reverse('pootle-tp-translate', kwargs={
+            'language_code': translation_project.language.code,
+            'project_code': translation_project.project.code,
+        }),
+
         'translation_project': translation_project,
         'language': translation_project.language,
         'project': translation_project.project,
@@ -64,7 +74,8 @@ def manage(request, translation_project):
                 store.nice_name = store.pootle_path[path_length:]
 
             ctx['stores'] = stores
-            return render(request, "translation_projects/terminology/stores.html", ctx)
+            return render(request,
+                          "translation_projects/terminology/stores.html", ctx)
 
     try:
         terminology_filename = get_terminology_filename(translation_project)
@@ -73,4 +84,5 @@ def manage(request, translation_project):
         )
         return manage_store(request, ctx, ctx['language'], term_store)
     except Store.DoesNotExist:
-        return render(request, "translation_projects/terminology/manage.html", ctx)
+        return render(request, "translation_projects/terminology/manage.html",
+                      ctx)

@@ -7,17 +7,16 @@
 # or later license. See the LICENSE file for a copy of the license and the
 # AUTHORS file for copyright and authorship information.
 
-from django.db import models
 from django.conf import settings
 from django.contrib.auth.models import Permission
 from django.contrib.contenttypes.models import ContentType
 from django.core.cache import cache
+from django.db import models
 from django.utils.encoding import iri_to_uri
 
 
 def get_permission_contenttype():
-    content_type = ContentType.objects.filter(name='pootle',
-                                              app_label='pootle_app',
+    content_type = ContentType.objects.filter(app_label='pootle_app',
                                               model="directory")[0]
     return content_type
 
@@ -27,19 +26,6 @@ def get_pootle_permission(codename):
     content_type = get_permission_contenttype()
     # Get the pootle view permission
     return Permission.objects.get(content_type=content_type, codename=codename)
-
-
-def get_pootle_permissions(codenames=None):
-    """Gets the available rights and their localized names."""
-    content_type = get_permission_contenttype()
-
-    if codenames is not None:
-        permissions = Permission.objects.filter(content_type=content_type,
-                                                codename__in=codenames)
-    else:
-        permissions = Permission.objects.filter(content_type=content_type)
-
-    return dict((permission.codename, permission) for permission in permissions)
 
 
 def get_permissions_by_username(username, directory):
@@ -52,23 +38,22 @@ def get_permissions_by_username(username, directory):
         try:
             permissionset = PermissionSet.objects.filter(
                 directory__in=directory.trail(only_dirs=False),
-                user__username=username) \
-                        .order_by('-directory__pootle_path')[0]
+                user__username=username).order_by('-directory__pootle_path')[0]
         except IndexError:
             permissionset = None
 
         if (len(path_parts) > 1 and path_parts[0] != 'projects' and
             (permissionset is None or
             len(filter(None, permissionset.directory.pootle_path.split('/'))) < 2)):
-                # Active permission at language level or higher, check project
-                # level permission
-                try:
-                    project_path = '/projects/%s/' % path_parts[1]
-                    permissionset = PermissionSet.objects \
-                            .get(directory__pootle_path=project_path,
-                                 user__username=username)
-                except PermissionSet.DoesNotExist:
-                    pass
+            # Active permission at language level or higher, check project
+            # level permission
+            try:
+                project_path = '/projects/%s/' % path_parts[1]
+                permissionset = PermissionSet.objects.get(
+                    directory__pootle_path=project_path,
+                    user__username=username)
+            except PermissionSet.DoesNotExist:
+                pass
 
         if permissionset:
             permissions_cache[pootle_path] = permissionset.to_dict()
@@ -102,7 +87,8 @@ def get_matching_permissions(user, directory, check_default=True):
 def check_user_permission(user, permission_codename, directory,
                           check_default=True):
     """Checks if the current user has the permission to perform
-    ``permission_codename``."""
+    ``permission_codename``.
+    """
     if user.is_superuser:
         return True
 
@@ -137,32 +123,19 @@ def check_permission(permission_codename, request):
             permission_codename in request.permissions)
 
 
-class PermissionSetManager(models.Manager):
-
-    def get_queryset(self):
-        """Mimics `select_related(depth=1)` behavior. Pending review."""
-        return (
-            super(PermissionSetManager, self).get_queryset().select_related(
-                'user', 'directory',
-            )
-        )
-
-
 class PermissionSet(models.Model):
 
-    objects = PermissionSetManager()
-
-    class Meta:
+    class Meta(object):
         unique_together = ('user', 'directory')
         app_label = "pootle_app"
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, db_index=True)
     directory = models.ForeignKey('pootle_app.Directory', db_index=True,
                                   related_name='permission_sets')
-    positive_permissions = models.ManyToManyField(Permission, db_index=True,
-            related_name='permission_sets_positive')
-    negative_permissions = models.ManyToManyField(Permission, db_index=True,
-            related_name='permission_sets_negative')
+    positive_permissions = models.ManyToManyField(
+        Permission, db_index=True, related_name='permission_sets_positive')
+    negative_permissions = models.ManyToManyField(
+        Permission, db_index=True, related_name='permission_sets_negative')
 
     def __unicode__(self):
         return "%s : %s" % (self.user.username,
@@ -174,14 +147,14 @@ class PermissionSet(models.Model):
 
     def save(self, *args, **kwargs):
         super(PermissionSet, self).save(*args, **kwargs)
-        # FIXME: can we use `post_save` signals or invalidate caches in
-        # model managers, please?
+        # FIXME: can we use `post_save` signals or invalidate caches in model
+        # managers, please?
         key = iri_to_uri('Permissions:%s' % self.user.username)
         cache.delete(key)
 
     def delete(self, *args, **kwargs):
         super(PermissionSet, self).delete(*args, **kwargs)
-        # FIXME: can we use `post_delete` signals or invalidate caches in
-        # model managers, please?
+        # FIXME: can we use `post_delete` signals or invalidate caches in model
+        # managers, please?
         key = iri_to_uri('Permissions:%s' % self.user.username)
         cache.delete(key)

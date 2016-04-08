@@ -7,14 +7,12 @@
 # or later license. See the LICENSE file for a copy of the license and the
 # AUTHORS file for copyright and authorship information.
 
-import glob
 import os
 import re
 import sys
-
 from distutils import log
-from distutils.core import Command
 from distutils.command.build import build as DistutilsBuild
+from distutils.core import Command
 from distutils.errors import DistutilsOptionError
 
 from setuptools import find_packages, setup
@@ -32,7 +30,8 @@ def parse_requirements(file_name):
     requirements = []
     for line in open(file_name, 'r').read().split('\n'):
         # Ignore comments, blank lines and included requirements files
-        if re.match(r'(\s*#)|(\s*$)|((-r|--allow-external|--allow-unverified) .*$)', line):
+        if re.match(r'(\s*#)|(\s*$)|'
+                    '((-r|--allow-external|--allow-unverified) .*$)', line):
             continue
 
         if re.match(r'\s*-e\s+', line):
@@ -53,7 +52,7 @@ class PyTest(TestCommand):
         self.test_suite = True
 
     def run_tests(self):
-        #import here, cause outside the eggs aren't loaded
+        # import here, cause outside the eggs aren't loaded
         import pytest
         errno = pytest.main(self.test_args)
         sys.exit(errno)
@@ -152,15 +151,16 @@ class BuildChecksTemplatesCommand(Command):
     def run(self):
         import django
         import codecs
-        from pootle.apps.pootle_misc.checks import check_names, excluded_filters
-        from translate.filters.checks import (TeeChecker,
-                                              StandardChecker, StandardUnitChecker)
+        from pootle.apps.pootle_misc.checks import (check_names,
+                                                    excluded_filters)
+        from translate.filters.checks import (TeeChecker, StandardChecker,
+                                              StandardUnitChecker)
         try:
             from docutils.core import publish_parts
         except ImportError:
             from distutils.errors import DistutilsModuleError
             raise DistutilsModuleError("Please install the docutils library.")
-        from pootle import syspath_override
+        from pootle import syspath_override  # noqa
         django.setup()
 
         def get_check_description(name, filterfunc):
@@ -176,7 +176,8 @@ class BuildChecksTemplatesCommand(Command):
 
             # Clean the leading whitespace on each docstring line so it gets
             # properly rendered.
-            docstring = "\n".join(line.strip() for line in filterfunc.__doc__.split("\n"))
+            docstring = "\n".join(line.strip()
+                                  for line in filterfunc.__doc__.split("\n"))
 
             # Render the reStructuredText in the docstring into HTML.
             description += publish_parts(docstring, writer_name="html")["body"]
@@ -219,7 +220,8 @@ setup(
     author_email="dev@translate.org.za",
     license="GNU General Public License 3 or later (GPLv3+)",
     url="http://pootle.translatehouse.org",
-    download_url="https://github.com/translate/pootle/releases/tag/" + __version__,
+    download_url="https://github.com/translate/pootle/releases/tag/" +
+        __version__,
 
     install_requires=parse_requirements('requirements/base.txt'),
     tests_require=parse_requirements('requirements/tests.txt'),
@@ -232,7 +234,8 @@ setup(
         "Intended Audience :: Developers",
         "Intended Audience :: End Users/Desktop",
         "Intended Audience :: Information Technology",
-        "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+        "License :: OSI Approved :: "
+            "GNU General Public License v3 or later (GPLv3+)",
         "Operating System :: OS Independent",
         "Operating System :: Microsoft :: Windows",
         "Operating System :: Unix",

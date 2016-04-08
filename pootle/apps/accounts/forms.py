@@ -26,9 +26,9 @@ class SocialVerificationForm(LoginForm):
         self.fields['login'].required = False
 
     def clean_login(self):
-        # The plan is: let's gather the user based on the email
-        # information we have available on the session, this way we don't
-        # have to fiddle around customizing `user_credentials()`
+        # The plan is: let's gather the user based on the email information we
+        # have available on the session, this way we don't have to fiddle
+        # around customizing `user_credentials()`
         email = self.sociallogin.user.email
 
         if app_settings.AUTHENTICATION_METHOD == AuthenticationMethod.EMAIL:
@@ -41,5 +41,5 @@ class SocialVerificationForm(LoginForm):
         # Oops, something must be really broken if this stage is reached
         raise forms.ValidationError(
             _('Your user seems to have disappeared. Please report this '
-               'to the site owners.')
+              'to the site owners.')
         )

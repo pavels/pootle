@@ -90,8 +90,9 @@ some tips for performance tuning on your Pootle installation.
   degrade the user experience.
 
 - Ensure gzip compression is enabled on your web server. For Apache,
-  `mod_deflate <https://httpd.apache.org/docs/2.4/mod/mod_deflate.html>`_
-  handles this. Also see `nginx wiki <http://wiki.nginx.org/HttpGzipModule>`_.
+  `mod_deflate <https://httpd.apache.org/docs/2.4/mod/mod_deflate.html>`_ and
+  for Nginx, `ngx_http_gzip_module
+  <http://nginx.org/en/docs/http/ngx_http_gzip_module.html>`_.
 
 
 .. _optimization#apache:
@@ -114,13 +115,7 @@ with values between 10 and 80.
 MySQL
 ^^^^^
 
-Using MySQL is well tested and recommended. You can :doc:`migrate your current
+Using MySQL with `InnoDB backend
+<https://dev.mysql.com/doc/refman/5.6/en/innodb-storage-engine.html>`_ is well
+tested. MyISAM is no longer supported. You can :doc:`migrate your current
 database <database_migration>` if you already have data you don't want to lose.
-
-If using MySQL backend, for smaller installations it is suggested to go with
-`MyISAM backend
-<https://dev.mysql.com/doc/refman/5.6/en/myisam-storage-engine.html>`_ (which
-might result in smaller memory usage and better performance). If high
-concurrency is expected, `InnoDB
-<https://dev.mysql.com/doc/refman/5.6/en/innodb-storage-engine.html>`_ is
-suggested to avoid locking issues.

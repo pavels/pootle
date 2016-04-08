@@ -11,7 +11,9 @@ import re
 
 from translate.search import match, terminology
 
+
 delimiters = re.compile(u"[\W]+", re.U)
+
 
 class Matcher(match.terminologymatcher):
     def __init__(self, store, max_candidates=10, min_similarity=75,
@@ -37,8 +39,6 @@ class TerminologyComparer(terminology.TerminologyComparer):
     def similarity(self, text, term, stoppercentage=40):
         text_list = delimiters.split(text)
         term_list = delimiters.split(term)
-        #text_list = text.split()
-        #term_list = term.split()
         match_info = {}
         matched_count = 0
         match_gap = 0

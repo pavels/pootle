@@ -6,33 +6,31 @@
  * AUTHORS file for copyright and authorship information.
  */
 
-'use strict';
+import Backbone from 'backbone';
+import _ from 'underscore';
 
-var _ = require('underscore');
-var Backbone = require('backbone');
-
-var AdminAPIMixin = require('mixins/admin_api');
+import AdminAPIMixin from 'mixins/admin_api';
 
 
-var metaUsers = ['nobody', 'default', 'system'];
+const metaUsers = ['nobody', 'default', 'system'];
 
 
-var User = Backbone.Model.extend({
+export const User = Backbone.Model.extend({
 
   defaults: {
-    'username': '',
-    'is_active': true,
-    'password': '',
-    'full_name': '',
-    'email': '',
-    'is_superuser': false,
-    'twitter': '',
-    'linkedin': '',
-    'website': '',
-    'bio': ''
+    username: '',
+    is_active: true,
+    password: '',
+    full_name: '',
+    email: '',
+    is_superuser: false,
+    twitter: '',
+    linkedin: '',
+    website: '',
+    bio: '',
   },
 
-  initialize: function (args, opts) {
+  initialize(args, opts) {
     if (opts && opts.urlRoot) {
       this.urlRoot = opts.urlRoot;
     }
@@ -44,39 +42,35 @@ var User = Backbone.Model.extend({
    */
   urlRoot: l('/xhr/admin/users/'),
 
-  getProfileUrl: function () {
+  getProfileUrl() {
     return l(`/user/${this.get('username')}/`);
   },
 
-  getSettingsUrl: function () {
+  getSettingsUrl() {
     return l(`/user/${this.get('username')}/settings/`);
   },
 
-  getStatsUrl: function () {
+  getStatsUrl() {
     return l(`/user/${this.get('username')}/stats/`);
   },
 
-  getReportsUrl: function () {
+  getReportsUrl() {
     return l(`/admin/reports/#username=${this.get('username')}`);
   },
 
-  isMeta: function () {
+  isMeta() {
     return metaUsers.indexOf(this.get('username')) !== -1;
-  }
+  },
+
 });
 
 
-var UserSet = Backbone.Collection.extend(
+export const UserSet = Backbone.Collection.extend(
   _.extend({}, AdminAPIMixin, {
 
-  model: User,
+    model: User,
 
-  url: l('/xhr/admin/users/'),
+    url: l('/xhr/admin/users/'),
 
-}));
-
-
-module.exports = {
-  User: User,
-  UserSet: UserSet
-};
+  })
+);

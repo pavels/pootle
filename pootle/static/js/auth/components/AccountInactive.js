@@ -6,20 +6,19 @@
  * AUTHORS file for copyright and authorship information.
  */
 
-'use strict';
-
 import React from 'react';
-import { PureRenderMixin } from 'react/addons';
+import { PureRenderMixin } from 'react-addons-pure-render-mixin';
 
 import AuthContent from './AuthContent';
 
 
-let AccountInactive = React.createClass({
-  mixins: [PureRenderMixin],
+const AccountInactive = React.createClass({
 
   propTypes: {
     onClose: React.PropTypes.func.isRequired,
   },
+
+  mixins: [PureRenderMixin],
 
 
   /* Layout */
@@ -38,7 +37,7 @@ let AccountInactive = React.createClass({
         </div>
       </AuthContent>
     );
-  }
+  },
 
 });
 

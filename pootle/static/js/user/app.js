@@ -6,15 +6,13 @@
  * AUTHORS file for copyright and authorship information.
  */
 
-'use strict';
-
 import React from 'react';
+import ReactDOM from 'react-dom';
 
 import UserEvent from 'components/UserEvent';
 import { User } from 'models/user';
 
 import UserProfileEdit from './components/UserProfileEdit';
-import UserProfileRouter from './routers';
 
 
 window.PTL = window.PTL || {};
@@ -22,17 +20,16 @@ window.PTL = window.PTL || {};
 
 PTL.user = {
 
-  init: function (opts) {
+  init(opts) {
     if (opts.userData !== undefined) {
       const editButton = document.querySelector('.js-user-profile-edit');
 
-      var user = new User(opts.userData, {urlRoot: l('/xhr/users/')});
+      const user = new User(opts.userData, { urlRoot: l('/xhr/users/') });
       const props = {
-        router: new UserProfileRouter(),
+        user,
         appRoot: opts.appRoot,
-        user: user
       };
-      React.render(<UserProfileEdit {...props} />, editButton);
+      ReactDOM.render(<UserProfileEdit {...props} />, editButton);
 
       // FIXME: let's make the whole profile page a component, so a lot of the
       // boilerplate here is rendered redundant
@@ -48,6 +45,7 @@ PTL.user = {
           window.open(e.currentTarget.href, '_blank',
                       `width=${width},height=${height},left=${left},top=${top}`);
         });
+        return true;
       });
     }
 
@@ -66,6 +64,7 @@ PTL.user = {
       unitUrl: data.unit_url,
       username: data.username,
     };
-    React.render(<UserEvent {...props} />, lastActivity);
-  }
+    ReactDOM.render(<UserEvent {...props} />, lastActivity);
+  },
+
 };

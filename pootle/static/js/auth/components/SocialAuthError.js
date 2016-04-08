@@ -6,54 +6,55 @@
  * AUTHORS file for copyright and authorship information.
  */
 
-'use strict';
-
 import React from 'react';
-import { PureRenderMixin } from 'react/addons';
+import { PureRenderMixin } from 'react-addons-pure-render-mixin';
 
 import AuthContent from './AuthContent';
 
 
-let SocialAuthError = React.createClass({
-  mixins: [PureRenderMixin],
+const SocialAuthError = React.createClass({
 
   propTypes: {
     socialError: React.PropTypes.object,
   },
 
+  mixins: [PureRenderMixin],
 
   /* Layout */
 
   render() {
+    const { socialError } = this.props;
     let errorMsg;
-    if (this.props.socialError) {
+    if (socialError) {
       errorMsg = interpolate(
         gettext('An error occurred while attempting to sign in via %s.'),
-        [this.props.socialError.provider]
+        [socialError.provider]
       );
     } else {
-      errorMsg = gettext('An error occurred while attempting to sign in via your social account.');
+      errorMsg = gettext(
+        'An error occurred while attempting to sign in via your social account.'
+      );
     }
 
-    let errorFace = {
+    const errorFace = {
       fontSize: '400%',
       marginBottom: '0.5em',
     };
     return (
-      <AuthContent>
-        <h2 style={errorFace}>{`{õ_õ}`}</h2>
+      <AuthContent style={{ textAlign: 'center' }}>
+        <h2 style={errorFace}>{'{õ_õ}'}</h2>
         <p>{errorMsg}</p>
-      {this.props.socialError &&
-        <p>{`${this.props.socialError.exception.name}: ${this.props.socialError.exception.msg} `}</p>
+      {socialError &&
+        <p>{`${socialError.exception.name}: ${socialError.exception.msg} `}</p>
       }
-      {this.props.socialError &&
-        <a href={this.props.socialError.retry_url}>
+      {socialError &&
+        <a href={socialError.retry_url}>
           {gettext('Try again')}
         </a>
       }
       </AuthContent>
     );
-  }
+  },
 
 });
 

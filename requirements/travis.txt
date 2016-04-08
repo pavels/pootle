@@ -1,7 +1,16 @@
--r build.txt
--r tests.txt
+# Travis testing https://travis-ci.org/translate/pootle
 
+-r tests.txt
+-r _docs.txt
+-r _lint.txt
+
+tox>=2.3
+
+# Databases
+MySQL-python>=1.2.1p2
+psycopg2>=2.4.5
+
+# Test coverage
+codecov
+coverage
 coveralls
-MySQL-python
-psycopg2
-pep8

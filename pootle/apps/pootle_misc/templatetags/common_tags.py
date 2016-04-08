@@ -19,6 +19,7 @@ register = template.Library()
 @register.inclusion_tag('browser/_table.html', takes_context=True)
 def display_table(context, table):
     return {
+        'can_translate': context["can_translate"],
         'table': table,
     }
 
@@ -72,9 +73,9 @@ def top_scorers(*args, **kwargs):
 
 @register.simple_tag
 def format_date_range(date_from, date_to, separator=" - ",
-    format_str="{dt:%B} {dt.day}, {dt:%Y}", year_f=", {dt:%Y}",
-    month_f="{dt:%B}"):
-    """ Takes a start date, end date, separator and formatting strings and
+                      format_str="{dt:%B} {dt.day}, {dt:%Y}",
+                      year_f=", {dt:%Y}", month_f="{dt:%B}"):
+    """Takes a start date, end date, separator and formatting strings and
     returns a pretty date range string
     """
     if (isinstance(date_to, datetime.datetime) and

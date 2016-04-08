@@ -10,11 +10,9 @@
 from django.core.exceptions import ValidationError
 from django.core.urlresolvers import reverse
 from django.db import models
-from django.db.models.signals import post_save
-from django.dispatch import receiver
 from django.utils.translation import ugettext_lazy as _
 
-from pootle.core.markup import get_markup_filter_name, MarkupField
+from pootle.core.markup import MarkupField, get_markup_filter_display_name
 from pootle.core.mixins import CachedMethods, CachedTreeItem
 from pootle.core.mixins.treeitem import NoCachedStats
 from pootle.core.url_helpers import (get_all_pootle_paths, get_editor_filter,
@@ -24,12 +22,18 @@ from pootle_language.models import Language
 from pootle_project.models import Project
 from pootle_store.models import Store, Unit
 from pootle_store.util import OBSOLETE
+
 from .signals import vfolder_post_save
 
 
 class VirtualFolder(models.Model):
 
+    # any changes to the `name` field may require updating the schema
+    # see migration 0003_case_sensitive_schema.py
     name = models.CharField(_('Name'), blank=False, max_length=70)
+
+    # any changes to the `location` field may require updating the schema
+    # see migration 0003_case_sensitive_schema.py
     location = models.CharField(
         _('Location'),
         blank=False,
@@ -58,7 +62,7 @@ class VirtualFolder(models.Model):
         _('Description'),
         blank=True,
         help_text=_('Use this to provide more information or instructions. '
-                    'Allowed markup: %s', get_markup_filter_name()),
+                    'Allowed markup: %s', get_markup_filter_display_name()),
     )
     units = models.ManyToManyField(
         Unit,
@@ -66,21 +70,8 @@ class VirtualFolder(models.Model):
         related_name='vfolders',
     )
 
-    class Meta:
+    class Meta(object):
         unique_together = ('name', 'location')
-
-    @property
-    def tp_relative_path(self):
-        """Return the virtual folder path relative to any translation project.
-
-        This is the virtual folder location stripping out the language and
-        project parts and appending the virtual folder name as if it were a
-        folder.
-
-        For example a location /af/{PROJ}/browser/ for a virtual folder default
-        is returned as browser/default/
-        """
-        return '/'.join(self.location.strip('/').split('/')[2:] + [self.name, ''])
 
     @property
     def all_locations(self):
@@ -279,10 +270,6 @@ class VirtualFolder(models.Model):
 class VirtualFolderTreeItemManager(models.Manager):
     use_for_related_fields = True
 
-    def get_queryset(self):
-        return super(VirtualFolderTreeItemManager, self) \
-            .get_queryset().select_related('vfolder')
-
     def live(self):
         """Filter VirtualFolderTreeItems with non-obsolete directories."""
         return self.filter(directory__obsolete=False)
@@ -306,6 +293,8 @@ class VirtualFolderTreeItem(models.Model, CachedTreeItem):
         null=True,
         db_index=True,
     )
+    # any changes to the `pootle_path` field may require updating the schema
+    # see migration 0003_case_sensitive_schema.py
     pootle_path = models.CharField(
         max_length=255,
         null=False,
@@ -321,17 +310,17 @@ class VirtualFolderTreeItem(models.Model, CachedTreeItem):
 
     objects = VirtualFolderTreeItemManager()
 
-    class Meta:
+    class Meta(object):
         unique_together = ('directory', 'vfolder')
 
-    ############################ Properties ###################################
+    # # # # # # # # # # # # # #  Properties # # # # # # # # # # # # # # # # # #
 
     @property
     def is_visible(self):
         return (self.vfolder.is_public and
-                (self.has_critical_errors or
-                 self.has_suggestions or
-                 (self.vfolder.priority >= 1 and not self.is_fully_translated)))
+                (self.has_critical_errors or self.has_suggestions or
+                 (self.vfolder.priority >= 1 and
+                  not self.is_fully_translated)))
 
     @property
     def has_critical_errors(self):
@@ -360,7 +349,7 @@ class VirtualFolderTreeItem(models.Model, CachedTreeItem):
     def code(self):
         return self.pk
 
-    ############################ Methods ######################################
+    # # # # # # # # # # # # # #  Methods # # # # # # # # # # # # # # # # # # #
 
     def __unicode__(self):
         return self.pootle_path
@@ -375,7 +364,8 @@ class VirtualFolderTreeItem(models.Model, CachedTreeItem):
 
         # Trigger the creation of the whole parent tree up to the vfolder
         # adjusted location.
-        if self.directory.pootle_path.count('/') > self.vfolder.location.count('/'):
+        if (self.directory.pootle_path.count('/') >
+                self.vfolder.location.count('/')):
             parent, created = VirtualFolderTreeItem.objects.get_or_create(
                 directory=self.directory.parent,
                 vfolder=self.vfolder,
@@ -404,17 +394,17 @@ class VirtualFolderTreeItem(models.Model, CachedTreeItem):
         if Directory.objects.filter(pootle_path=self.pootle_path).exists():
             msg = (u"Problem adding virtual folder '%s' with location '%s': "
                    u"VirtualFolderTreeItem clashes with Directory %s" %
-                   (self.vfolder.name, self.vfolder.location, self.pootle_path))
+                   (self.vfolder.name, self.vfolder.location,
+                    self.pootle_path))
             raise ValidationError(msg)
 
     def get_translate_url(self, **kwargs):
-        lang, proj, dp, fn = split_pootle_path(self.pootle_path)
         return u''.join([
-            reverse('pootle-tp-translate', args=[lang, proj, dp, fn]),
-            get_editor_filter(**kwargs),
-        ])
+            reverse("pootle-tp-translate",
+                    args=split_pootle_path(self.pootle_path)[:-1]),
+            get_editor_filter(**kwargs)])
 
-    ### TreeItem
+    # # # TreeItem
 
     def can_be_updated(self):
         return not self.directory.obsolete
@@ -450,42 +440,4 @@ class VirtualFolderTreeItem(models.Model, CachedTreeItem):
         return [p for p in get_all_pootle_paths(self.get_cachekey())
                 if p.count('/') > self.vfolder.location.count('/')]
 
-    ### /TreeItem
-
-
-@receiver(post_save, sender=Unit)
-def relate_unit(sender, instance, created=False, **kwargs):
-    """Add newly created units to the virtual folders they belong, if any.
-
-    When a new store or translation project, or even a full project is added,
-    some of their units might be matched by the filters of any of the
-    previously existing virtual folders, so this signal handler relates those
-    new units to the virtual folders they belong to, if any.
-    """
-    if not created:
-        return
-
-    pootle_path = instance.store.pootle_path
-
-    for vf in VirtualFolder.objects.iterator():
-        for location in vf.all_locations:
-            if not pootle_path.startswith(location):
-                continue
-
-            for filename in vf.filter_rules.split(","):
-                if pootle_path == "".join([location, filename]):
-                    vf.units.add(instance)
-
-                    # Create missing VirtualFolderTreeItem tree structure after
-                    # adding this new unit.
-                    vfolder_treeitem, created = VirtualFolderTreeItem.objects.get_or_create(
-                        directory=instance.store.parent,
-                        vfolder=vf,
-                    )
-
-                    if not created:
-                        # The VirtualFolderTreeItem already existed, so
-                        # calculate again the stats up to the root.
-                        vfolder_treeitem.update_all_cache()
-
-                    break
+    # # # /TreeItem

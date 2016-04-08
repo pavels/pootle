@@ -6,14 +6,12 @@
  * AUTHORS file for copyright and authorship information.
  */
 
-'use strict';
-
-import 'jquery-cookie';
-import assign from 'object-assign';
 import React from 'react';
-import { PureRenderMixin } from 'react/addons';
+import { PureRenderMixin } from 'react-addons-pure-render-mixin';
 
-import { Tabs, Tab } from 'components/Tabs';
+import Tab from 'components/Tab';
+import Tabs from 'components/Tabs';
+import cookie from 'utils/cookie';
 
 import AuthProgress from './AuthProgress';
 import SignInForm from './SignInForm';
@@ -23,8 +21,7 @@ import SocialSignInForm from './SocialSignInForm';
 const SIGNIN_TAB_COOKIE_NAME = 'pootle-auth-signin-tab';
 
 
-let SignInPanel = React.createClass({
-  mixins: [PureRenderMixin],
+const SignInPanel = React.createClass({
 
   propTypes: {
     canRegister: React.PropTypes.bool.isRequired,
@@ -34,11 +31,12 @@ let SignInPanel = React.createClass({
     redirectTo: React.PropTypes.string,
   },
 
+  mixins: [PureRenderMixin],
 
   /* Handlers */
 
   handleChange(index) {
-    $.cookie(SIGNIN_TAB_COOKIE_NAME, index);
+    cookie(SIGNIN_TAB_COOKIE_NAME, index, { path: '/' });
   },
 
 
@@ -46,7 +44,7 @@ let SignInPanel = React.createClass({
 
   render() {
     if (this.props.redirectTo) {
-      return <AuthProgress msg={gettext('Signed in. Redirecting...')} />
+      return <AuthProgress msg={gettext('Signed in. Redirecting...')} />;
     }
 
     if (!this.props.socialAuthProviders.length) {
@@ -55,7 +53,7 @@ let SignInPanel = React.createClass({
       );
     }
 
-    let initialTabIndex = parseInt($.cookie(SIGNIN_TAB_COOKIE_NAME), 10) || 0;
+    const initialTabIndex = parseInt(cookie(SIGNIN_TAB_COOKIE_NAME), 10) || 0;
 
     return (
       <Tabs onChange={this.handleChange} initialTab={initialTabIndex}>
@@ -67,7 +65,7 @@ let SignInPanel = React.createClass({
         </Tab>
       </Tabs>
     );
-  }
+  },
 
 });
 

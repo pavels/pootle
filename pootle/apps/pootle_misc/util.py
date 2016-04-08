@@ -7,6 +7,7 @@
 # or later license. See the LICENSE file for a copy of the license and the
 # AUTHORS file for copyright and authorship information.
 
+from datetime import datetime, timedelta
 from functools import wraps
 from importlib import import_module
 
@@ -14,8 +15,6 @@ from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from django.http import HttpResponseBadRequest
 from django.utils import timezone
-
-from datetime import datetime, timedelta
 
 
 def import_func(path):
@@ -59,16 +58,6 @@ def ajax_required(f):
         return f(request, *args, **kwargs)
 
     return wrapper
-
-
-def to_int(value):
-    """Converts `value` to `int` and returns `None` if the conversion is
-    not possible.
-    """
-    try:
-        return int(value)
-    except ValueError:
-        return None
 
 
 def get_max_month_datetime(dt):

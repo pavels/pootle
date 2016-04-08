@@ -6,24 +6,24 @@
  * AUTHORS file for copyright and authorship information.
  */
 
-'use strict';
-
 import assign from 'object-assign';
 import React from 'react';
 
-import { FormElement } from 'components/forms';
-import { FormMixin } from 'mixins/forms';
+import { gotoScreen, signIn } from '../actions';
+import FormElement from 'components/FormElement';
+import FormMixin from 'mixins/FormMixin';
 
 
-let SignInForm = React.createClass({
-  mixins: [FormMixin],
+const SignInForm = React.createClass({
 
   propTypes: {
     canRegister: React.PropTypes.bool.isRequired,
+    dispatch: React.PropTypes.func.isRequired,
     formErrors: React.PropTypes.object.isRequired,
     isLoading: React.PropTypes.bool.isRequired,
   },
 
+  mixins: [FormMixin],
 
   /* Lifecycle */
 
@@ -40,7 +40,7 @@ let SignInForm = React.createClass({
 
   componentWillReceiveProps(nextProps) {
     if (this.state.errors !== nextProps.formErrors) {
-      this.setState({errors: nextProps.formErrors});
+      this.setState({ errors: nextProps.formErrors });
     }
   },
 
@@ -49,25 +49,25 @@ let SignInForm = React.createClass({
 
   handleRequestPasswordReset(e) {
     e.preventDefault();
-    this.props.flux.getActions('auth').gotoScreen('requestPasswordReset');
+    this.props.dispatch(gotoScreen('requestPasswordReset'));
   },
 
   handleSignUp(e) {
     e.preventDefault();
-    this.props.flux.getActions('auth').gotoScreen('signUp');
+    this.props.dispatch(gotoScreen('signUp'));
   },
 
   handleFormSubmit(e) {
     e.preventDefault();
-    let nextURL = window.location.pathname + window.location.hash;
-    this.props.flux.getActions('auth').signIn(this.state.formData, nextURL);
+    const nextURL = window.location.pathname + window.location.hash;
+    this.props.dispatch(signIn(this.state.formData, nextURL));
   },
 
 
   /* Others */
 
   hasData() {
-    let { formData } = this.state;
+    const { formData } = this.state;
     return formData.login !== '' && formData.password !== '';
   },
 
@@ -75,10 +75,10 @@ let SignInForm = React.createClass({
   /* Layout */
 
   render() {
-    let { errors } = this.state;
-    let { formData } = this.state;
+    const { errors } = this.state;
+    const { formData } = this.state;
 
-    let signUp = this.props.canRegister ?
+    const signUp = this.props.canRegister ?
       <a href="#" onClick={this.handleSignUp}>
         {gettext('Sign up as a new user')}
       </a> :
@@ -91,20 +91,20 @@ let SignInForm = React.createClass({
       >
         <div className="fields">
           <FormElement
-            attribute="login"
+            autoFocus
             label={gettext('Username')}
-            autoFocus={true}
             handleChange={this.handleChange}
-            formData={formData}
-            errors={errors}
+            name="login"
+            errors={errors.login}
+            value={formData.login}
           />
           <FormElement
             type="password"
-            attribute="password"
             label={gettext('Password')}
             handleChange={this.handleChange}
-            formData={formData}
-            errors={errors}
+            name="password"
+            errors={errors.password}
+            value={formData.password}
           />
           <div className="actions password-forgotten">
             <a href="#" onClick={this.handleRequestPasswordReset}>
@@ -128,7 +128,8 @@ let SignInForm = React.createClass({
         </div>
       </form>
     );
-  }
+  },
+
 });
 
 

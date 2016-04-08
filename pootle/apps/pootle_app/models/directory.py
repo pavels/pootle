@@ -17,14 +17,9 @@ from pootle.core.url_helpers import (get_editor_filter, split_pootle_path,
                                      to_tp_relative_path)
 from pootle_misc.baseurl import l
 
+
 class DirectoryManager(models.Manager):
     use_for_related_fields = True
-
-    def get_queryset(self):
-        # ForeignKey fields with null=True are not selected by
-        # select_related unless explicitly specified
-        return super(DirectoryManager, self).get_queryset() \
-                                            .select_related('parent')
 
     def live(self):
         """Filters non-obsolete directories."""
@@ -41,22 +36,27 @@ class DirectoryManager(models.Manager):
 
 class Directory(models.Model, CachedTreeItem):
 
+    # any changes to the `name` field may require updating the schema
+    # see migration 0005_case_sensitive_schema.py
     name = models.CharField(max_length=255, null=False)
     parent = models.ForeignKey('Directory', related_name='child_dirs',
-            null=True, db_index=True)
-    pootle_path = models.CharField(max_length=255, null=False,
-            db_index=True, unique=True)
+                               null=True, db_index=True)
+    # any changes to the `pootle_path` field may require updating the schema
+    # see migration 0005_case_sensitive_schema.py
+    pootle_path = models.CharField(max_length=255, null=False, db_index=True,
+                                   unique=True)
     obsolete = models.BooleanField(default=False)
 
     is_dir = True
 
     objects = DirectoryManager()
 
-    class Meta:
+    class Meta(object):
         ordering = ['name']
+        default_permissions = ()
         app_label = "pootle_app"
 
-    ############################ Properties ###################################
+    # # # # # # # # # # # # # #  Properties # # # # # # # # # # # # # # # # # #
 
     @property
     def stores(self):
@@ -90,7 +90,7 @@ class Directory(models.Model, CachedTreeItem):
     def code(self):
         return self.name.replace('.', '-')
 
-    ############################ Cached properties ############################
+    # # # # # # # # # # # # # #  Cached properties # # # # # # # # # # # # # #
 
     @cached_property
     def path(self):
@@ -102,17 +102,17 @@ class Directory(models.Model, CachedTreeItem):
         """Returns the translation project belonging to this directory."""
         if self.is_language() or self.is_project():
             return None
-        else:
-            if self.is_translationproject():
-                return self.translationproject
-            else:
-                aux_dir = self
-                while (not aux_dir.is_translationproject() and
-                       aux_dir.parent is not None):
-                    aux_dir = aux_dir.parent
 
-                return aux_dir.translationproject
-    ############################ Methods ######################################
+        if self.is_translationproject():
+            return self.translationproject
+
+        aux_dir = self
+        while not aux_dir.is_translationproject() and aux_dir.parent is not None:
+            aux_dir = aux_dir.parent
+
+        return aux_dir.translationproject
+
+    # # # # # # # # # # # # # #  Methods # # # # # # # # # # # # # # # # # # #
 
     def __unicode__(self):
         return self.pootle_path
@@ -136,7 +136,7 @@ class Directory(models.Model, CachedTreeItem):
 
         if lang and proj:
             pattern_name = 'pootle-tp-translate'
-            pattern_args = [lang, proj, dir, fn]
+            pattern_args = [lang, proj, dir]
         elif lang:
             pattern_name = 'pootle-language-translate'
             pattern_args = [lang]
@@ -152,15 +152,16 @@ class Directory(models.Model, CachedTreeItem):
             get_editor_filter(**kwargs),
         ])
 
-    ### TreeItem
+    # # # TreeItem
     def can_be_updated(self):
         return not self.obsolete
 
     def get_children(self):
         result = []
         if not self.is_projects_root():
-            #FIXME: can we replace this with a quicker path query?
-            result.extend([item for item in self.child_stores.live().iterator()])
+            # FIXME: can we replace this with a quicker path query?
+            result.extend([item for item in
+                           self.child_stores.live().iterator()])
             result.extend([item for item in self.child_dirs.live().iterator()])
         else:
             project_list = [item.project for item in self.child_dirs.iterator()
@@ -187,14 +188,15 @@ class Directory(models.Model, CachedTreeItem):
     def get_cachekey(self):
         return self.pootle_path
 
-    ### /TreeItem
+    # # # /TreeItem
 
     def get_relative(self, path):
         """Given a path of the form a/b/c, where the path is relative
         to this directory, recurse the path and return the object
         (either a Directory or a Store) named 'c'.
 
-        This does not currently deal with .. path components."""
+        This does not currently deal with .. path components.
+        """
 
         from pootle_store.models import Store
 

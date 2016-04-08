@@ -14,7 +14,8 @@ from ..utils.html import rewrite_links
 
 
 __all__ = (
-    'get_markup_filter_name', 'get_markup_filter', 'apply_markup_filter',
+    'get_markup_filter_name', 'get_markup_filter_display_name',
+    'get_markup_filter', 'apply_markup_filter',
 )
 
 
@@ -38,9 +39,7 @@ def rewrite_internal_link(link):
 
     for page_model in AbstractPage.__subclasses__():
         try:
-            page = page_model.objects.live().get(
-                    virtual_path=virtual_path,
-                )
+            page = page_model.objects.live().get(virtual_path=virtual_path,)
             url = page.get_absolute_url()
         except ObjectDoesNotExist:
             pass
@@ -49,8 +48,14 @@ def rewrite_internal_link(link):
 
 
 def get_markup_filter_name():
-    """Returns a nice version for the current markup filter's name."""
+    """Returns the current markup filter's name."""
     name, args = get_markup_filter()
+    return 'html' if name is None else name
+
+
+def get_markup_filter_display_name():
+    """Returns a nice version for the current markup filter's name."""
+    name = get_markup_filter_name()
     return {
         'textile': u'Textile',
         'markdown': u'Markdown',
@@ -68,11 +73,11 @@ def get_markup_filter():
         if markup_filter is None:
             return (None, "unset")
         elif markup_filter == 'textile':
-            import textile
+            import textile  # noqa
         elif markup_filter == 'markdown':
-            import markdown
+            import markdown  # noqa
         elif markup_filter == 'restructuredtext':
-            import docutils
+            import docutils  # noqa
         else:
             return (None, '')
     except Exception:

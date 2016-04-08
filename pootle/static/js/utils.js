@@ -6,19 +6,17 @@
  * AUTHORS file for copyright and authorship information.
  */
 
-'use strict';
+import $ from 'jquery';
 
-var $ = require('jquery');
-
-require('jquery-select2');
+import 'jquery-select2';
 
 
-var escapeRE = /<[^<]*?>|\r\n|[\r\n\t&<>]/gm,
-    whitespaceRE = /^ +| +$|[\r\n\t] +| {2,}/gm;
+const escapeRE = /<[^<]*?>|\r\n|[\r\n\t&<>]/gm;
+const whitespaceRE = /^ +| +$|[\r\n\t] +| {2,}/gm;
 
 
 /* Gets current URL's hash */
-var getHash = function (win) {
+export function getHash(win) {
   // Mozilla has a bug when it automatically unescapes %26 to '&'
   // when getting hash from `window.location.hash'.
   // So, we have to extract it from the `window.location'.
@@ -26,34 +24,42 @@ var getHash = function (win) {
   // as it will break encoded ampersand again
   // (decoding can be done on the higher level, if needed)
   return (win || window).location.toString().split('#', 2)[1] || '';
-};
+}
 
 
-var decodeURIParameter = function(s) {
+function decodeURIParameter(s) {
   return decodeURIComponent(s.replace(/\+/g, ' '));
-};
+}
 
 
-var getParsedHash = function (h) {
-  var params = {}, e;
-  var r = /([^&;=]+)=?([^&;]*)/g;
+export function getParsedHash(hash) {
+  const params = {};
+  const r = /([^&;=]+)=?([^&;]*)/g;
+
+  let h = hash;
   if (h === undefined) {
     h = this.getHash();
   }
 
-  while (e = r.exec(h)) {
+  let e = r.exec(h);
+  while (e !== null) {
     params[decodeURIParameter(e[1])] = decodeURIParameter(e[2]);
+    e = r.exec(h);
   }
   return params;
-};
+}
 
 
 /* Updates current URL's hash */
-var updateHashPart = function (part, newVal, removeArray) {
-  var r = /([^&;=]+)=?([^&;]*)/g;
-  var params = [], h = getHash(), e, ok, p;
-  while (e = r.exec(h)) {
-    p = decodeURIParameter(e[1]);
+export function updateHashPart(part, newVal, removeArray) {
+  const r = /([^&;=]+)=?([^&;]*)/g;
+  const params = [];
+  const h = getHash();
+  let ok = false;
+  let e = r.exec(h);
+
+  while (e !== null) {
+    const p = decodeURIParameter(e[1]);
     if (p === part) {
       // replace with the given value
       params.push([e[1], encodeURIComponent(newVal)].join('='));
@@ -62,6 +68,8 @@ var updateHashPart = function (part, newVal, removeArray) {
       // use the parameter as is
       params.push([e[1], e[2]].join('='));
     }
+
+    e = r.exec(h);
   }
   // if there was no old parameter, push the param at the end
   if (!ok) {
@@ -69,83 +77,89 @@ var updateHashPart = function (part, newVal, removeArray) {
       encodeURIComponent(newVal)].join('='));
   }
   return params.join('&');
-};
+}
 
 
 /* Cross-browser comparison function */
-var strCmp = function (a, b) {
-  return a === b ? 0 : a < b ? -1 : 1;
-};
+export function strCmp(a, b) {
+  let rv;
+  if (a === b) {
+    rv = 0;
+  } else if (a < b) {
+    rv = -1;
+  } else {
+    rv = 1;
+  }
+  return rv;
+}
 
 
 /* Cleans '\n' escape sequences and adds '\t' sequences */
-var cleanEscape = function (s) {
-  return s.replace(/\\t/g, "\t").replace(/\\n/g, "");
-};
+export function cleanEscape(s) {
+  return s.replace(/\\t/g, '\t').replace(/\\n/g, '');
+}
 
 
 /* Fancy escapes to highlight parts of the text such as HTML tags */
-var fancyEscape = function (text) {
-
+export function fancyEscape(text) {
   function replace(match) {
-      var replaced,
-          escapeHl= '<span class="highlight-escape">%s</span>',
-          htmlHl = '<span class="highlight-html">&lt;%s&gt;</span>',
-          submap = {
-            '\r\n': escapeHl.replace(/%s/, '\\r\\n') + '<br/>\n',
-            '\r': escapeHl.replace(/%s/, '\\r') + '<br/>\n',
-            '\n': escapeHl.replace(/%s/, '\\n') + '<br/>\n',
-            '\t': escapeHl.replace(/%s/, '\\t'),
-            '&': '&amp;',
-            '<': '&lt;',
-            '>': '&gt;'
-          };
+    const escapeHl = '<span class="highlight-escape">%s</span>';
+    const htmlHl = '<span class="highlight-html">&lt;%s&gt;</span>';
+    const submap = {
+      '\r\n': `${escapeHl.replace(/%s/, '\\r\\n')}<br/>\n`,
+      '\r': `${escapeHl.replace(/%s/, '\\r')}<br/>\n`,
+      '\n': `${escapeHl.replace(/%s/, '\\n')}<br/>\n`,
+      '\t': escapeHl.replace(/%s/, '\\t'),
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+    };
 
-      replaced = submap[match];
+    let replaced = submap[match];
 
-      if (replaced === undefined) {
-        replaced = htmlHl.replace(
+    if (replaced === undefined) {
+      replaced = htmlHl.replace(
             /%s/,
-            fancyEscape(match.slice(1, match.length-1))
+            fancyEscape(match.slice(1, match.length - 1))
         );
-      }
+    }
 
-      return replaced;
+    return replaced;
   }
 
   return text.replace(escapeRE, replace);
-};
+}
 
 
 /* Highlight spaces to make them easily visible */
-var fancySpaces = function (text) {
-
+function fancySpaces(text) {
   function replace(match) {
-      var spaceHl= '<span class="translation-space"> </span>';
+    const spaceHl = '<span class="translation-space"> </span>';
 
-      return Array(match.length + 1).join(spaceHl);
+    return Array(match.length + 1).join(spaceHl);
   }
 
   return text.replace(whitespaceRE, replace);
-};
+}
 
 
 /* Fancy highlight: fancy spaces + fancy escape */
-var fancyHl = function (text) {
+export function fancyHl(text) {
   return fancySpaces(fancyEscape(text));
-};
+}
 
 
 /* Returns a string representing a relative datetime */
-var relativeDate = function (date) {
-  var fmt, count,
-      delta = Date.now() - date,
-      seconds = Math.round(Math.abs(delta) / 1000),
-      minutes = Math.round(seconds / 60),
-      hours = Math.round(minutes / 60),
-      days = Math.round(hours / 24),
-      weeks = Math.round(days / 7),
-      years = Math.round(days / 365);
+export function relativeDate(date) {
+  const delta = Date.now() - date;
+  const seconds = Math.round(Math.abs(delta) / 1000);
+  const minutes = Math.round(seconds / 60);
+  const hours = Math.round(minutes / 60);
+  const days = Math.round(hours / 24);
+  const weeks = Math.round(days / 7);
+  const years = Math.round(days / 365);
+  let fmt;
+  let count;
 
   if (years > 0) {
     fmt = ngettext('A year ago', '%s years ago', years);
@@ -169,16 +183,16 @@ var relativeDate = function (date) {
   }
 
   return gettext('A few seconds ago');
-};
+}
 
 
 /* Converts the elements matched by `selector` into selectable inputs.
  *
  * `onChange` function will be fired when the select choice changes.
  */
-var makeSelectableInput = function (selector, options, onChange) {
+export function makeSelectableInput(selector, options, onChange) {
   // XXX: Check if this works with multiple selects per page
-  var $el = $(selector);
+  const $el = $(selector);
 
   if (!$el.length) {
     return;
@@ -187,40 +201,40 @@ var makeSelectableInput = function (selector, options, onChange) {
   $el.select2(options);
 
   $el.on('change', onChange);
-};
+}
 
 
-var executeFunctionByName = function (functionName, context /*, args */) {
-  var args = Array.prototype.slice.call(arguments).splice(2),
-      namespaces = functionName.split("."),
-      func = namespaces.pop();
+export function executeFunctionByName(functionName, ctx, ...args) {
+  const namespaces = functionName.split('.');
+  const func = namespaces.pop();
 
-  for (var i=0; i<namespaces.length; i++) {
+  let context = ctx;
+  for (let i = 0; i < namespaces.length; i++) {
     context = context[namespaces[i]];
   }
 
   return context[func].apply(this, args);
-};
+}
 
 
-var blinkClass = function ($elem, className, n, delay) {
+export function blinkClass($elem, className, n, delay) {
   $elem.toggleClass(className);
   if (n > 1) {
-    setTimeout(() => blinkClass($elem, className, n-1, delay), delay);
+    setTimeout(() => blinkClass($elem, className, n - 1, delay), delay);
   }
-};
+}
 
 
-module.exports = {
-  getHash: getHash,
-  getParsedHash: getParsedHash,
-  updateHashPart: updateHashPart,
-  strCmp: strCmp,
-  cleanEscape: cleanEscape,
-  fancyEscape: fancyEscape,
-  fancyHl: fancyHl,
-  relativeDate: relativeDate,
-  makeSelectableInput: makeSelectableInput,
-  executeFunctionByName: executeFunctionByName,
-  blinkClass: blinkClass,
+export default {
+  blinkClass,
+  cleanEscape,
+  executeFunctionByName,
+  fancyEscape,
+  fancyHl,
+  getHash,
+  getParsedHash,
+  makeSelectableInput,
+  relativeDate,
+  strCmp,
+  updateHashPart,
 };

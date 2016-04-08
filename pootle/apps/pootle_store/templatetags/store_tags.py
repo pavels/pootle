@@ -20,7 +20,6 @@ from django.utils.safestring import mark_safe
 from django.utils.translation import ugettext as _
 
 from pootle.core.utils.templates import get_template_source
-
 from pootle_store.fields import list_empty
 
 
@@ -28,6 +27,8 @@ register = template.Library()
 
 
 IMAGE_URL_RE = re.compile("(https?://[^\s]+\.(png|jpe?g|gif))", re.IGNORECASE)
+
+
 @register.filter
 def image_urls(text):
     """Return a list of image URLs extracted from `text`."""
@@ -35,6 +36,8 @@ def image_urls(text):
 
 
 ESCAPE_RE = re.compile('<[^<]*?>|\\\\|\r\n|[\r\n\t&<>]')
+
+
 def fancy_escape(text):
     """Replace special chars with entities, and highlight XML tags and
     whitespaces.
@@ -63,6 +66,8 @@ def fancy_escape(text):
 
 
 WHITESPACE_RE = re.compile('^ +| +$|[\r\n\t] +| {2,}')
+
+
 def fancy_spaces(text):
     """Highlight spaces to make them easily visible."""
     def replace(match):
@@ -74,6 +79,8 @@ def fancy_spaces(text):
 
 
 PUNCTUATION_RE = general.PunctuationPlaceable().regex
+
+
 def fancy_punctuation_chars(text):
     """Wrap punctuation chars found in the ``text`` around tags."""
     def replace(match):
@@ -98,13 +105,16 @@ def call_highlight(old, new):
         old_value = old.strings
     else:
         old_value = old
+
     if list_empty(old_value):
         return fancy_highlight(new)
-    else:
-        return highlight_diffs(old, new)
+
+    return highlight_diffs(old, new)
 
 
 differencer = diff_match_patch()
+
+
 def highlight_diffs(old, new):
     """Highlight the differences between old and new."""
 
@@ -115,76 +125,94 @@ def highlight_diffs(old, new):
     for op, text in diff:
         if op == 0:  # equality
             if removed:
-                textdiff += '<span class="diff-delete">%s</span>' % fancy_escape(removed)
+                textdiff += '<span class="diff-delete">%s</span>' % \
+                    fancy_escape(removed)
                 removed = u""
             textdiff += fancy_escape(text)
         elif op == 1:  # insertion
             if removed:
                 # this is part of a substitution, not a plain insertion. We
                 # will format this differently.
-                textdiff += '<span class="diff-replace">%s</span>' % fancy_escape(text)
+                textdiff += '<span class="diff-replace">%s</span>' % \
+                    fancy_escape(text)
                 removed = u""
             else:
-                textdiff += '<span class="diff-insert">%s</span>' % fancy_escape(text)
+                textdiff += '<span class="diff-insert">%s</span>' % \
+                    fancy_escape(text)
         elif op == -1:  # deletion
             removed = text
     if removed:
-        textdiff += '<span class="diff-delete">%s</span>' % fancy_escape(removed)
+        textdiff += '<span class="diff-delete">%s</span>' % \
+            fancy_escape(removed)
     return mark_safe(textdiff)
 
 
 @register.filter('pluralize_source')
 def pluralize_source(unit):
-    if unit.hasplural():
-        count = len(unit.source.strings)
-        if count == 1:
-            return [(0, unit.source.strings[0], "%s+%s" % (_('Singular'), _('Plural')))]
-        elif count == 2:
-            return [(0, unit.source.strings[0], _('Singular')), (1, unit.source.strings[1], _('Plural'))]
-        else:
-            forms = []
-            for i, source in enumerate(unit.source.strings):
-                forms.append((i, source, _('Plural Form %d', i)))
-            return forms
-    else:
+    if not unit.hasplural():
         return [(0, unit.source, None)]
+
+    count = len(unit.source.strings)
+    if count == 1:
+        return [(0, unit.source.strings[0], "%s+%s" % (_('Singular'),
+                                                       _('Plural')))]
+
+    if count == 2:
+        return [(0, unit.source.strings[0], _('Singular')),
+                (1, unit.source.strings[1], _('Plural'))]
+
+    forms = []
+    for i, source in enumerate(unit.source.strings):
+        forms.append((i, source, _('Plural Form %d', i)))
+    return forms
+
 
 @register.filter('pluralize_target')
 def pluralize_target(unit, nplurals=None):
-    if unit.hasplural():
-        if nplurals is None:
-            try:
-                nplurals = unit.store.translation_project.language.nplurals
-            except ObjectDoesNotExist:
-                pass
-        forms = []
-        if nplurals is None:
-            for i, target in enumerate(unit.target.strings):
-                forms.append((i, target, _('Plural Form %d', i)))
-        else:
-            for i in range(nplurals):
-                try:
-                    target = unit.target.strings[i]
-                except IndexError:
-                    target = ''
-                forms.append((i, target, _('Plural Form %d', i)))
-        return forms
-    else:
+    if not unit.hasplural():
         return [(0, unit.target, None)]
+
+    if nplurals is None:
+        try:
+            nplurals = unit.store.translation_project.language.nplurals
+        except ObjectDoesNotExist:
+            pass
+    forms = []
+    if nplurals is None:
+        for i, target in enumerate(unit.target.strings):
+            forms.append((i, target, _('Plural Form %d', i)))
+    else:
+        for i in range(nplurals):
+            try:
+                target = unit.target.strings[i]
+            except IndexError:
+                target = ''
+            forms.append((i, target, _('Plural Form %d', i)))
+
+    return forms
+
 
 @register.filter('pluralize_diff_sugg')
 def pluralize_diff_sugg(sugg):
     unit = sugg.unit
-    if unit.hasplural():
-        forms = []
-        for i, target in enumerate(sugg.target.strings):
-            if i < len(unit.target.strings):
-                forms.append((i, target, call_highlight(unit.target.strings[i], target), _('Plural Form %d', i)))
-            else:
-                forms.append((i, target, call_highlight('', target), _('Plural Form %d', i)))
-        return forms
-    else:
-        return [(0, sugg.target, call_highlight(unit.target, sugg.target), None)]
+    if not unit.hasplural():
+        return [
+            (0, sugg.target, call_highlight(unit.target, sugg.target), None)
+        ]
+
+    forms = []
+    for i, target in enumerate(sugg.target.strings):
+        if i < len(unit.target.strings):
+            sugg_text = unit.target.strings[i]
+        else:
+            sugg_text = ''
+
+        forms.append((
+            i, target, call_highlight(sugg_text, target),
+            _('Plural Form %d', i)
+        ))
+
+    return forms
 
 
 @register.tag(name="include_raw")
@@ -202,9 +230,10 @@ def do_include_raw(parser, token):
         )
 
     template_name = bits[1]
-    if template_name[0] in ('"', "'") and template_name[-1] == template_name[0]:
+    if (template_name[0] in ('"', "'") and
+            template_name[-1] == template_name[0]):
         template_name = template_name[1:-1]
 
     source, path = get_template_source(template_name)
 
-    return template.TextNode(source)
+    return template.base.TextNode(source)

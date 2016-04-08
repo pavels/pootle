@@ -6,20 +6,17 @@
  * AUTHORS file for copyright and authorship information.
  */
 
-'use strict';
+import $ from 'jquery';
+import 'jquery-magnific-popup';
+import 'jquery-serializeObject';
+import 'jquery-utils';
 
-var $ = require('jquery');
-
-require('jquery-magnific-popup');
-require('jquery-serializeObject');
-require('jquery-utils');
-
-let { updateInputState } = require('./helpers');
+import { updateInputState } from './helpers';
 
 
-var agreement = {
+const agreement = {
 
-  init: function (url) {
+  init(url) {
     this.url = url;
 
     $(document).on('click', '.js-agreement-popup', this.displayContent.bind(this));
@@ -28,71 +25,72 @@ var agreement = {
     this.display();
   },
 
-  display: function () {
+  display() {
     $.magnificPopup.open({
       items: {
         src: this.url,
-        type: 'ajax'
+        type: 'ajax',
       },
       callbacks: {
-        parseAjax: function (mfpResponse) {
+        parseAjax(mfpResponse) {
+          // eslint-disable-next-line no-param-reassign
           mfpResponse.data = mfpResponse.data.form;
         },
-        ajaxContentAdded: function () {
+        ajaxContentAdded() {
           updateInputState('.js-legalfield', '.js-agreement-continue');
-        }
+        },
       },
-      modal: true
+      modal: true,
     });
   },
 
-  displayContent: function (e) {
+  displayContent(e) {
     e.preventDefault();
 
-    var that = this;
-    var url = e.target.href;
+    const that = this;
+    const url = e.target.href;
 
     $.magnificPopup.close();
     $.magnificPopup.open({
       items: {
         src: url,
-        type: 'ajax'
+        type: 'ajax',
       },
       callbacks: {
-        afterClose: that.display.bind(that)
+        afterClose: that.display.bind(that),
       },
-      mainClass: 'popup-ajax'
+      mainClass: 'popup-ajax',
     });
   },
 
-  onSubmit: function (e) {
+  onSubmit(e) {
     e.preventDefault();
 
-    var $agreementBox = $('.js-agreement-box'),
-        $agreementForm = $('.js-agreement-form');
+    const $agreementBox = $('.js-agreement-box');
+    const $agreementForm = $('.js-agreement-form');
     $agreementBox.spin();
-    $agreementBox.css({opacity: 0.5});
+    $agreementBox.css({ opacity: 0.5 });
 
     $.ajax({
       url: $agreementForm.attr('action'),
       type: 'POST',
       data: $agreementForm.serializeObject(),
-      success: function (data) {
+      success() {
         $.magnificPopup.close();
       },
-      complete: function (xhr) {
+      complete(xhr) {
         $agreementBox.spin(false);
-        $agreementBox.css({opacity: 1});
+        $agreementBox.css({ opacity: 1 });
 
         if (xhr.status === 400) {
-          var form = $.parseJSON(xhr.responseText).form;
+          const form = $.parseJSON(xhr.responseText).form;
           $agreementBox.parent().html(form);
         }
-      }
+      },
     });
-  }
+  },
 
 };
 
 
-module.exports = agreement;
+export default agreement;

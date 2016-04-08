@@ -15,6 +15,10 @@
 # 3. If we ever rely on large parts of text from an upstream app, rather
 #    consider having translators work on the upstream translations.
 
+# Fake imports
+from django.utils.translation import ugettext as _
+
+
 #########
 # Django
 #########

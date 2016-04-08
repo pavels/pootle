@@ -11,21 +11,19 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.core.urlresolvers import reverse_lazy
 from django.http import Http404
 from django.shortcuts import redirect, render
-from django.template import loader, RequestContext
+from django.template import RequestContext
+from django.template.loader import get_template
 from django.utils.translation import ugettext_lazy as _
 from django.views.generic import (CreateView, DeleteView, TemplateView,
                                   UpdateView)
 
 from pootle.core.http import JsonResponse, JsonResponseBadRequest
+from pootle.core.markup.filters import apply_markup_filter
 from pootle.core.views import SuperuserRequiredMixin
 from pootle_misc.util import ajax_required
 
 from .forms import agreement_form_factory
-from .models import AbstractPage, LegalPage, StaticPage
-
-
-ANN_TYPE = u'announcements'
-ANN_VPATH = ANN_TYPE + u'/'
+from .models import ANN_TYPE, ANN_VPATH, AbstractPage, LegalPage, StaticPage
 
 
 class PageModelMixin(object):
@@ -59,7 +57,7 @@ class PageModelMixin(object):
         kwargs.update({'label_suffix': ''})
         return kwargs
 
-    def get_form(self, form_class):
+    def get_form(self, form_class=None):
         form = super(PageModelMixin, self).get_form(form_class)
 
         if self.page_type == ANN_TYPE:
@@ -108,7 +106,8 @@ class AdminTemplateView(SuperuserRequiredMixin, AdminCtxMixin, TemplateView):
         return ctx
 
 
-class PageCreateView(SuperuserRequiredMixin, AdminCtxMixin, PageModelMixin, CreateView):
+class PageCreateView(SuperuserRequiredMixin, AdminCtxMixin, PageModelMixin,
+                     CreateView):
     fields = ('title', 'virtual_path', 'active', 'url', 'body')
 
     success_url = reverse_lazy('pootle-staticpages')
@@ -129,7 +128,7 @@ class PageCreateView(SuperuserRequiredMixin, AdminCtxMixin, PageModelMixin, Crea
 
         return initial
 
-    def get_form(self, form_class):
+    def get_form(self, form_class=None):
         form = super(PageCreateView, self).get_form(form_class)
 
         if self.page_type == ANN_TYPE:
@@ -143,7 +142,8 @@ class PageCreateView(SuperuserRequiredMixin, AdminCtxMixin, PageModelMixin, Crea
         return form
 
 
-class PageUpdateView(SuperuserRequiredMixin, AdminCtxMixin, PageModelMixin, UpdateView):
+class PageUpdateView(SuperuserRequiredMixin, AdminCtxMixin, PageModelMixin,
+                     UpdateView):
     fields = ('title', 'virtual_path', 'active', 'url', 'body')
 
     success_url = reverse_lazy('pootle-staticpages')
@@ -178,9 +178,8 @@ def display_page(request, virtual_path):
     page = None
     for page_model in AbstractPage.__subclasses__():
         try:
-            page = page_model.objects.live(request.user).get(
-                    virtual_path=virtual_path,
-                )
+            page = page_model.objects.live(
+                request.user).get(virtual_path=virtual_path,)
         except ObjectDoesNotExist:
             pass
 
@@ -201,7 +200,7 @@ def display_page(request, virtual_path):
 
 
 def _get_rendered_agreement(request, form):
-    template = loader.get_template('staticpages/agreement.html')
+    template = get_template('staticpages/agreement.html')
     return template.render(RequestContext(request, {'form': form}))
 
 
@@ -223,3 +222,16 @@ def legal_agreement(request):
 
     rendered_form = _get_rendered_agreement(request, form_class())
     return JsonResponse({'form': rendered_form})
+
+
+@ajax_required
+def preview_content(request):
+    """Returns content rendered based on the configured markup settings."""
+    if 'text' not in request.POST:
+        return JsonResponseBadRequest({
+            'msg': _('Text is missing'),
+        })
+
+    return JsonResponse({
+        'rendered': apply_markup_filter(request.POST['text']),
+    })

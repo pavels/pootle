@@ -6,45 +6,41 @@
  * AUTHORS file for copyright and authorship information.
  */
 
-'use strict';
+import $ from 'jquery';
 
-var $ = require('jquery');
-
-var utils = require('./utils.js');
+import utils from './utils';
 
 
-var updateInputState = function ($checkboxes, $input) {
+function updateInputState($checkboxes, $input) {
   if ($checkboxes.length === $checkboxes.filter(':checked').length) {
     $input.prop('disabled', false);
   } else {
     $input.prop('disabled', true);
   }
-};
+}
 
 
-var helpers = {
+const helpers = {
 
   /* Updates relative dates */
-  updateRelativeDates: function () {
-    $('.js-relative-date').each(function (i, e) {
+  updateRelativeDates() {
+    $('.js-relative-date').each((i, e) => {
       $(e).text(utils.relativeDate(Date.parse($(e).attr('datetime'))));
     });
   },
 
-  fixSidebarHeight: function () {
-    var $body = $('#body'),
-        bodyHeight = $body.height(),
-        bodyPadding = parseInt($body.css('padding-bottom'), 10),
-        contentAreaHeight = $('#wrapper').height() - $body.offset().top -
-                            bodyPadding,
-        sidebarHeight,
-        newHeight;
+  fixSidebarHeight() {
+    const $body = $('#body');
+    const bodyHeight = $body.height();
+    const bodyPadding = parseInt($body.css('padding-bottom'), 10);
+    const contentAreaHeight = $('#wrapper').height() - $body.offset().top -
+                              bodyPadding;
 
     // Set sidebar width before measuring height of content
     $('#sidebar').css('width', '30%');
-    sidebarHeight = $('#sidebar #sidebar-content').height() +
-                    $('#footer').height() + bodyPadding;
-    newHeight = Math.max(contentAreaHeight, sidebarHeight);
+    const sidebarHeight = $('#sidebar #sidebar-content').height() +
+                          $('#footer').height() + bodyPadding;
+    const newHeight = Math.max(contentAreaHeight, sidebarHeight);
 
     // Remove sidebar width setting - allow CSS to set width
     $('#sidebar').css('width', '');
@@ -56,18 +52,18 @@ var helpers = {
   /* Updates the disabled state of an input button according to the
    * checked status of input checkboxes.
    */
-  updateInputState: function (checkboxSelector, inputSelector) {
-    var $checkbox = $(checkboxSelector);
+  updateInputState(checkboxSelector, inputSelector) {
+    const $checkbox = $(checkboxSelector);
     if ($checkbox.length) {
-      var $input = $(inputSelector);
+      const $input = $(inputSelector);
       updateInputState($checkbox, $input);
-      $checkbox.change(function () {
+      $checkbox.change(() => {
         updateInputState($checkbox, $input);
       });
     }
-  }
+  },
 
 };
 
 
-module.exports = helpers;
+export default helpers;

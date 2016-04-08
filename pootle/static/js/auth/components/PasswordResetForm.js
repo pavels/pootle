@@ -6,28 +6,29 @@
  * AUTHORS file for copyright and authorship information.
  */
 
-'use strict';
-
 import assign from 'object-assign';
 import React from 'react';
-import { PureRenderMixin } from 'react/addons';
+import { PureRenderMixin } from 'react-addons-pure-render-mixin';
 
-import { FormElement } from 'components/forms';
-import { FormMixin } from 'mixins/forms';
+import FormElement from 'components/FormElement';
+import FormMixin from 'mixins/FormMixin';
 
+import { gotoScreen, passwordReset } from '../actions';
 import AuthContent from './AuthContent';
 import AuthProgress from './AuthProgress';
 
 
-let PasswordResetForm = React.createClass({
-  mixins: [PureRenderMixin, FormMixin],
+const PasswordResetForm = React.createClass({
 
   propTypes: {
+    dispatch: React.PropTypes.func.isRequired,
     formErrors: React.PropTypes.object.isRequired,
     isLoading: React.PropTypes.bool.isRequired,
     tokenFailed: React.PropTypes.bool.isRequired,
+    redirectTo: React.PropTypes.string,
   },
 
+  mixins: [PureRenderMixin, FormMixin],
 
   /* Lifecycle */
 
@@ -43,7 +44,7 @@ let PasswordResetForm = React.createClass({
 
   componentWillReceiveProps(nextProps) {
     if (this.state.errors !== nextProps.formErrors) {
-      this.setState({errors: nextProps.formErrors});
+      this.setState({ errors: nextProps.formErrors });
     }
   },
 
@@ -52,21 +53,21 @@ let PasswordResetForm = React.createClass({
 
   handlePasswordReset(e) {
     e.preventDefault();
-    this.props.flux.getActions('auth').gotoScreen('requestPasswordReset');
+    this.props.dispatch(gotoScreen('requestPasswordReset'));
   },
 
   handleFormSubmit(e) {
     e.preventDefault();
 
-    let url = window.location.pathname;
-    this.props.flux.getActions('auth').passwordReset(this.state.formData, url);
+    const url = window.location.pathname;
+    this.props.dispatch(passwordReset(this.state.formData, url));
   },
 
 
   /* Others */
 
   hasData() {
-    let { formData } = this.state;
+    const { formData } = this.state;
     return (formData.password1 !== '' && formData.password2 !== '' &&
             formData.password1 === formData.password2);
   },
@@ -77,7 +78,9 @@ let PasswordResetForm = React.createClass({
   renderTokenFailed() {
     return (
       <AuthContent>
-        <p>{gettext('The password reset link was invalid, possibly because it has already been used. Please request a new password reset.')}</p>
+        <p>{gettext('The password reset link was invalid, possibly because ' +
+                    'it has already been used. Please request a new ' +
+                    'password reset.')}</p>
         <div className="actions">
           <button
             className="btn btn-primary"
@@ -95,34 +98,35 @@ let PasswordResetForm = React.createClass({
       return this.renderTokenFailed();
     }
     if (this.props.redirectTo) {
-      return <AuthProgress msg={gettext('Password changed, signing in...')} />
+      return <AuthProgress msg={gettext('Password changed, signing in...')} />;
     }
 
-    let { errors } = this.state;
-    let { formData } = this.state;
+    const { errors } = this.state;
+    const { formData } = this.state;
 
     return (
       <AuthContent>
         <form
           method="post"
-          onSubmit={this.handleFormSubmit}>
+          onSubmit={this.handleFormSubmit}
+        >
           <div className="fields">
             <FormElement
+              autoFocus
               type="password"
-              attribute="password1"
               label={gettext('Password')}
-              autoFocus={true}
               handleChange={this.handleChange}
-              formData={formData}
-              errors={errors}
+              name="password1"
+              errors={errors.password1}
+              value={formData.password1}
             />
             <FormElement
               type="password"
-              attribute="password2"
               label={gettext('Repeat Password')}
               handleChange={this.handleChange}
-              formData={formData}
-              errors={errors}
+              name="password2"
+              errors={errors.password2}
+              value={formData.password2}
             />
           </div>
           {this.renderAllFormErrors()}
@@ -142,7 +146,7 @@ let PasswordResetForm = React.createClass({
         </form>
       </AuthContent>
     );
-  }
+  },
 
 });
 

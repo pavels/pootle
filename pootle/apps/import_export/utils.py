@@ -9,15 +9,16 @@
 
 import logging
 
-from django.utils.translation import ugettext as _
-
 from translate.storage.factory import getclass
 
-from pootle_store.models import Store
-from pootle_statistics.models import SubmissionTypes
+from django.utils.translation import ugettext as _
 
-from .exceptions import (UnsupportedFiletypeError, MissingPootlePathError,
-                         MissingPootleRevError, FileImportError)
+from pootle_app.models.permissions import check_user_permission
+from pootle_statistics.models import SubmissionTypes
+from pootle_store.models import Store
+
+from .exceptions import (FileImportError, MissingPootlePathError,
+                         MissingPootleRevError, UnsupportedFiletypeError)
 
 
 logger = logging.getLogger(__name__)
@@ -48,10 +49,18 @@ def import_file(file, user=None):
         raise FileImportError(_("Could not create '%s'. Missing "
                                 "Project/Language? (%s)", (file.name, e)))
 
+    tp = store.translation_project
+    allow_add_and_obsolete = ((tp.project.checkstyle == 'terminology'
+                               or tp.is_template_project)
+                              and check_user_permission(user,
+                                                        'administrate',
+                                                        tp.directory))
     try:
-        store.update(overwrite=True, store=f, user=user,
-                     submission_type=SubmissionTypes.UPLOAD)
+        store.update(store=f, user=user,
+                     submission_type=SubmissionTypes.UPLOAD,
+                     store_revision=rev,
+                     allow_add_and_obsolete=allow_add_and_obsolete)
     except Exception as e:
         # This should not happen!
-        logger.error("Error importing file: %s" % str(e))
+        logger.error("Error importing file: %s", str(e))
         raise FileImportError(_("There was an error uploading your file"))

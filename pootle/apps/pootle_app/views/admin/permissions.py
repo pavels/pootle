@@ -12,8 +12,8 @@ from django.contrib.auth import get_user_model
 from django.utils.translation import ugettext as _
 
 from pootle_app.models import Directory
-from pootle_app.models.permissions import (get_permission_contenttype,
-                                           PermissionSet)
+from pootle_app.models.permissions import (PermissionSet,
+                                           get_permission_contenttype)
 from pootle_app.views.admin import util
 from pootle_misc.forms import GroupedModelChoiceField
 
@@ -56,58 +56,56 @@ def admin_permissions(request, current_directory, template, ctx):
     )
 
     base_queryset = User.objects.filter(is_active=1).exclude(
-            id__in=current_directory.permission_sets \
-                                    .values_list('user_id', flat=True),
-    )
+        id__in=current_directory.permission_sets.values_list('user_id',
+                                                             flat=True),)
     querysets = [(None, base_queryset.filter(
         username__in=('nobody', 'default')
     ))]
 
     querysets.append((
         _('All Users'),
-        base_queryset.exclude(username__in=('nobody', 'default'))
-                     .order_by('username'),
+        base_queryset.exclude(username__in=('nobody',
+                                            'default')).order_by('username'),
     ))
-
 
     class PermissionSetForm(forms.ModelForm):
 
-        class Meta:
+        class Meta(object):
             model = PermissionSet
             fields = ('user', 'directory', 'positive_permissions',
                       'negative_permissions')
 
         directory = forms.ModelChoiceField(
-                queryset=Directory.objects.filter(pk=current_directory.pk),
-                initial=current_directory.pk,
-                widget=forms.HiddenInput,
+            queryset=Directory.objects.filter(pk=current_directory.pk),
+            initial=current_directory.pk,
+            widget=forms.HiddenInput,
         )
         user = GroupedModelChoiceField(
-                label=_('Username'),
-                querysets=querysets,
-                queryset=User.objects.all(),
-                required=True,
-                widget=forms.Select(attrs={
-                    'class': 'js-select2 select2-username',
-                }),
+            label=_('Username'),
+            querysets=querysets,
+            queryset=User.objects.all(),
+            required=True,
+            widget=forms.Select(attrs={
+                'class': 'js-select2 select2-username',
+            }),
         )
         positive_permissions = PermissionFormField(
-                label=_('Add Permissions'),
-                queryset=positive_permissions_qs,
-                required=False,
-                widget=forms.SelectMultiple(attrs={
-                    'class': 'js-select2 select2-multiple',
-                    'data-placeholder': _('Select one or more permissions'),
-                }),
+            label=_('Add Permissions'),
+            queryset=positive_permissions_qs,
+            required=False,
+            widget=forms.SelectMultiple(attrs={
+                'class': 'js-select2 select2-multiple',
+                'data-placeholder': _('Select one or more permissions'),
+            }),
         )
         negative_permissions = PermissionFormField(
-                label=_('Revoke Permissions'),
-                queryset=negative_permissions_qs,
-                required=False,
-                widget=forms.SelectMultiple(attrs={
-                    'class': 'js-select2 select2-multiple',
-                    'data-placeholder': _('Select one or more permissions'),
-                }),
+            label=_('Revoke Permissions'),
+            queryset=negative_permissions_qs,
+            required=False,
+            widget=forms.SelectMultiple(attrs={
+                'class': 'js-select2 select2-multiple',
+                'data-placeholder': _('Select one or more permissions'),
+            }),
         )
 
         def __init__(self, *args, **kwargs):
@@ -117,7 +115,6 @@ def admin_permissions(request, current_directory, template, ctx):
             # are not applicable
             if language is not None:
                 del self.fields['negative_permissions']
-
 
     link = lambda instance: unicode(instance.user)
     directory_permissions = current_directory.permission_sets \

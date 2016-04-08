@@ -60,6 +60,7 @@ def test_get_path_obj(rf, default, afrikaans_tutorial):
              project_code=project_code)
 
 
+@pytest.mark.django_db
 def test_get_path_obj_disabled(rf, default, admin, project_foo,
                                afrikaans_tutorial,
                                arabic_tutorial_obsolete,
@@ -119,6 +120,7 @@ def test_get_path_obj_disabled(rf, default, admin, project_foo,
              project_code=project_code_obsolete)
 
 
+@pytest.mark.django_db
 def test_get_resource_tp(rf, default, tutorial, afrikaans_tutorial):
     """Tests that the correct resources are set for the given TP contexts."""
     store_name = 'tutorial.po'
@@ -160,6 +162,7 @@ def test_get_resource_tp(rf, default, tutorial, afrikaans_tutorial):
     assert afrikaans_tutorial.pootle_path in response.get('location')
 
 
+@pytest.mark.django_db
 def test_get_resource_project(rf, default, tutorial, afrikaans_tutorial,
                               arabic_tutorial_obsolete):
     """Tests that the correct resources are set for the given Project
@@ -182,8 +185,8 @@ def test_get_resource_project(rf, default, tutorial, afrikaans_tutorial,
     func(request, tutorial, '', store_name)
     assert isinstance(request.resource_obj, ProjectResource)
 
-    # Two languages had this file, but it was marked as obsolete
-    # for the Arabic language!
+    # Two languages had this file, but it was marked as obsolete for the Arabic
+    # language!
     # Should only contain a single file resource
     assert len(request.resource_obj.resources) == 1
     assert isinstance(request.resource_obj.resources[0], Store)
@@ -192,8 +195,8 @@ def test_get_resource_project(rf, default, tutorial, afrikaans_tutorial,
     func(request, tutorial, subdir_name, '')
     assert isinstance(request.resource_obj, ProjectResource)
 
-    # Two languages have this dir, but it was marked as obsolete for
-    # the Arabic language!
+    # Two languages have this dir, but it was marked as obsolete for the Arabic
+    # language!
     # Should only contain a single dir resource
     assert len(request.resource_obj.resources) == 1
     assert isinstance(request.resource_obj.resources[0], Directory)

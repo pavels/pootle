@@ -29,7 +29,7 @@ def test_delete_mark_obsolete_resurrect_sync(fr_tutorial_subdir_to_remove_po):
 
     # Parse stores
     for store in tp.stores.all():
-        store.update(overwrite=False, only_newer=False)
+        store.update(store.file.store)
 
     # Remove on-disk directory
     os.remove(fr_tutorial_subdir_to_remove_po.file.path)
@@ -40,8 +40,8 @@ def test_delete_mark_obsolete_resurrect_sync(fr_tutorial_subdir_to_remove_po):
     # Update stores by rescanning TP
     tp.scan_files()
 
-    # Now files and directories that ceased to exist should be
-    # marked as obsolete
+    # Now files and directories that ceased to exist should be marked as
+    # obsolete
     updated_directory = Directory.objects.get(pootle_path=dir_pootle_path)
     assert updated_directory.obsolete
 

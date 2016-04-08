@@ -41,8 +41,12 @@
       {% endif %}
 
       {% if 'total' in table.fields %}
-      <td id="total-words-{{ item.code|cssid }}" class="stats-number total js-total not-inited">
-        <a class="non-zero" href="{{ item.href_all }}"></a>
+      <td id="total-words-{{ item.code|cssid }}" class="stats-number total not-inited">
+        {% if can_translate %}
+        <a class="stats-data non-zero" href="{{ item.href_all }}"></a>
+        {% else %}
+        <span class="stats-data non-zero"></span>
+        {% endif %}
         <span class="zero muted">0</span>
         <span class="not-inited muted">—</span>
       </td>
@@ -54,25 +58,37 @@
       </td>
       {% endif %}
 
-      {% if 'need-translation' in table.fields %}
-      <td id="need-translation-{{ item.code|cssid }}" class="stats-number need-translation js-need-translation not-inited">
-        <a class="non-zero" href="{{ item.href_todo }}"></a>
+      {% if 'critical' in table.fields %}
+      <td id="critical-{{ item.code|cssid }}" class="stats-number critical not-inited">
+        {% if can_translate %}
+        <a class="stats-data non-zero" href="{{ item.href_critical }}"></a>
+        {% else %}
+        <span class="stats-data non-zero"></span>
+        {% endif %}
         <span class="zero muted">0</span>
         <span class="not-inited muted">—</span>
       </td>
       {% endif %}
 
       {% if 'suggestions' in table.fields %}
-      <td id="suggestions-{{ item.code|cssid }}" class="stats-number suggestions js-suggestions not-inited">
-        <a class="non-zero" href="{{ item.href_sugg }}"></a>
+      <td id="suggestions-{{ item.code|cssid }}" class="stats-number suggestions not-inited">
+        {% if can_translate %}
+        <a class="stats-data non-zero" href="{{ item.href_sugg }}"></a>
+        {% else %}
+        <span class="stats-data non-zero"></span>
+        {% endif %}
         <span class="zero muted">0</span>
         <span class="not-inited muted">—</span>
       </td>
       {% endif %}
 
-      {% if 'critical' in table.fields %}
-      <td id="critical-{{ item.code|cssid }}" class="stats-number critical js-critical not-inited">
-        <a class="non-zero" href="{{ item.href_critical }}"></a>
+      {% if 'need-translation' in table.fields %}
+      <td id="need-translation-{{ item.code|cssid }}" class="stats-number need-translation not-inited">
+        {% if can_translate %}
+        <a class="stats-data non-zero" href="{{ item.href_todo }}"></a>
+        {% else %}
+        <span class="stats-data non-zero"></span>
+        {% endif %}
         <span class="zero muted">0</span>
         <span class="not-inited muted">—</span>
       </td>

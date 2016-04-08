@@ -752,8 +752,7 @@ button.close
 
 /* TABLES */
 
-.module table,
-.module-primary table
+.module table
 {
     width: 100%;
 }
@@ -839,18 +838,6 @@ html[dir="rtl"] .last-action
 .last-action .extra-item-meta
 {
     color: #999;
-}
-
-.hd h3
-{
-    border-bottom: 1px solid #eee;
-    margin: 1em 0 0;
-}
-
-html[dir="rtl"] .hd h3 span
-{
-    padding-right: 0;
-    padding-left: 5px;
 }
 
 .bd
@@ -1008,17 +995,6 @@ ul.errorlist
 }
 
 
-
-/*
- * NEWS FORM
- */
-
-.news
-{
-    margin: 2em 0;
-    float: left;
-}
-
 /*
  * CAPTCHA FORM
  */
@@ -1072,7 +1048,6 @@ div.settings-container
 
 .settings-container h2,
 .module .hd h2,
-.module-primary .hd h2,
 .hd h2
 {
     font-family: 'Helvetica Neue', Helvetica, Helvetica, Arial, sans-serif;
@@ -1172,13 +1147,13 @@ table.stats td.last-updated
     text-align: right;
 }
 
-td.stats-number.need-translation a,
-td.stats-number.suggestions a,
-td.stats-number.critical a
+
+td.stats-number.need-translation .stats-data,
+td.stats-number.suggestions .stats-data,
+td.stats-number.critical .stats-data
 {
     text-decoration: none;
     display: inline-block;
-    background: #0489b7;
     color: #fff;
     padding: 0 0.5em;
     margin-right: -0.5em;
@@ -1186,21 +1161,41 @@ td.stats-number.critical a
     border-radius: 1em;
 }
 
+td.stats-number.need-translation .stats-data
+{
+    background: #85a9b5;
+}
+
+td.stats-number.need-translation a.stats-data
+{
+    background: #0489b7;
+}
+
+td.stats-number.suggestions .stats-data
+{
+    background: #aba786;
+}
+
+td.stats-number.suggestions a.stats-data
+{
+    background: #bbaa66;
+}
+
+td.stats-number.critical .stats-data
+{
+    background: #a08d88;
+}
+
+td.stats-number.critical a.stats-data
+{
+    background: #c30;
+}
+
 td.stats-number.need-translation a:hover,
 td.stats-number.suggestions a:hover,
 td.stats-number.critical a:hover
 {
     background: #000 !important;
-}
-
-td.stats-number.suggestions a
-{
-    background: #bbaa66;
-}
-
-td.stats-number.critical a
-{
-    background: #c30;
 }
 
 td.stats-name .user-nobody
@@ -1253,7 +1248,9 @@ html[dir="rtl"] td.stats-name,
 }
 
 #check-critical a,
-.checks-critical a
+.checks-critical a,
+#check-critical .check-data,
+.checks-critical .check-data
 {
     color: #c00;
 }
@@ -1511,6 +1508,12 @@ html[dir="rtl"] ul.pager li:last-child > *
     padding-top: 0.2em;
 }
 
+#top-stats h3
+{
+    border-bottom: 1px solid #eee;
+    margin: 1em 0 0;
+}
+
 #top-stats .label
 {
     margin-top: -1.1em;
@@ -1690,6 +1693,12 @@ html[dir="rtl"] #tabs li
     color: #000;
 }
 
+#search-form input[type="text"].search-widget-disabled
+{
+    background: #eee;
+    font-style: italic;
+}
+
 .btn-search
 {
     padding: 0;
@@ -1791,6 +1800,12 @@ html[dir="rtl"] #tabs li
 /*
  * MISC
  */
+
+.avatar
+{
+    display: inline-block;
+    overflow: hidden;
+}
 
 a.collapse,
 a.slide
@@ -2054,4 +2069,22 @@ span.email .i
 .upload-form
 {
     display: none;
+}
+
+
+/*
+ * Django messages placeholder
+ */
+.messages
+{
+    background: #fe9;
+    margin: 0 -2em;
+    padding: 0.7em 1.5em;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.messages li
+{
+    margin-left: 0.5em;
 }

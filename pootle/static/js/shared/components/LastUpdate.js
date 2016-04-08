@@ -7,14 +7,13 @@
  */
 
 import React, { PropTypes } from 'react';
-import { PureRenderMixin } from 'react/addons';
+import { PureRenderMixin } from 'react-addons-pure-render-mixin';
 import _ from 'underscore';
 
 import TimeSince from 'components/TimeSince';
 
 
 const LastUpdate = React.createClass({
-  mixins: [PureRenderMixin],
 
   propTypes: {
     displayDatetime: PropTypes.string.isRequired,
@@ -22,6 +21,8 @@ const LastUpdate = React.createClass({
     unitSource: PropTypes.string.isRequired,
     unitUrl: PropTypes.string.isRequired,
   },
+
+  mixins: [PureRenderMixin],
 
   getActionText() {
     const { unitSource } = this.props;
@@ -45,7 +46,7 @@ const LastUpdate = React.createClass({
         />
       </div>
     );
-  }
+  },
 
 });
 

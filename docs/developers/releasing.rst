@@ -3,7 +3,7 @@ Making a Pootle Release
 
 This page is divided in four sections. The first one lists the tasks that must
 be performed before creating a package. The second section includes a list of
-tasks  to get a valid package. The third one to get the package published and
+tasks to get a valid package. The third one to get the package published and
 the release announced. The last one lists and suggests some possible cleanup
 tasks to be done after releasing.
 
@@ -29,7 +29,7 @@ First upload the new translations:
 
 #. Create the new templates:
 
-   .. code-block:: bash
+   .. code-block:: console
 
        $ git clone git@github.com:translate/pootle.git pootle-translations
        $ cd pootle-translations
@@ -75,18 +75,11 @@ We work from a clean checkout to ensure that everything you are adding to the
 build is what is in the repository and doesn't contain any of your uncommitted
 changes. It also ensures that someone else could replicate your process.
 
-.. code-block:: bash
+.. code-block:: console
 
     $ git clone git@github.com:translate/pootle.git pootle-release
     $ cd pootle-release
     $ git submodule update --init
-
-
-Double check version dependencies
----------------------------------
-
-Make sure the versions listed in :file:`docs/server/installation.rst` match
-those in :file:`requirements/base.txt`.
 
 
 Update requirements versions
@@ -96,6 +89,11 @@ Update the minimum version number for the requirements in:
 
 - :file:`requirements/`
 - :file:`pootle/checks.py`
+- :file:`docs/server/requirements.rst`
+
+
+Make sure version numbers displayed on documentation examples match the latest
+requirements on the above files.
 
 
 Check copyright dates
@@ -104,7 +102,7 @@ Check copyright dates
 Update any copyright dates in :file:`docs/conf.py:copyright` and anywhere else
 that needs fixing.
 
-.. code-block:: bash
+.. code-block:: console
 
     $ git grep 2013  # Should pick up anything that should be examined
 
@@ -143,7 +141,7 @@ The quality checks descriptions are kept as a static HTML page that has to be
 regenerated in order to ensure the descriptions match the currently available
 quality checks.
 
-.. code-block:: bash
+.. code-block:: console
 
     $ mkvirtualenv build-checks-templates
     (build-checks-templates)$ pip install -r requirements/build.txt
@@ -162,7 +160,7 @@ Update the translations from the `Pootle server
 
 #. Download all translations
 
-   .. code-block:: bash
+   .. code-block:: console
 
        $ make get-translations
 
@@ -171,7 +169,7 @@ Update the translations from the `Pootle server
    want packagers to use.  The requirement is roughly 80% translated with no
    obvious variable errors. Languages with a small userbase can be included.
 
-   .. code-block:: bash
+   .. code-block:: console
 
        $ make linguas
 
@@ -180,7 +178,7 @@ Update the translations from the `Pootle server
 
 #. Build translations to check for errors:
 
-   .. code-block:: bash
+   .. code-block:: console
 
        $ make mo  # Build all LINGUAS enabled languages
 
@@ -194,14 +192,14 @@ and since it can be rendered well in some of our key sites.
 First we need to create a log of changes in Pootle, which is done generically
 like this:
 
-.. code-block:: bash
+.. code-block:: console
 
     $ git log $previous_version..HEAD > docs/releases/$version.rst
 
 
 Or a more specific example:
 
-.. code-block:: bash
+.. code-block:: console
 
     $ git log 2.5.0..HEAD > docs/releases/2.5.1.rst
 
@@ -227,7 +225,7 @@ Read for grammar and spelling errors.
 
 We create a list of contributors using this command:
 
-.. code-block:: bash
+.. code-block:: console
 
     $ git log 2.5.0..HEAD --format='%aN, ' | awk '{arr[$0]++} END{for (i in arr){print arr[i], i;}}' | sort -rn | cut -d\  -f2-
 
@@ -240,6 +238,8 @@ Up version numbers
 Update the version number in:
 
 - :file:`pootle/__init__.py:VERSION`
+- Documentation examples, especially :file:`docs/server/installation.rst` and
+  :file:`docs/server/upgrading.rst`
 
 The version tuple should follow the pattern::
 
@@ -261,13 +261,12 @@ Build the package
 Building is the first step to testing that things work. From your clean
 checkout run:
 
-.. code-block:: bash
+.. code-block:: console
 
     $ mkvirtualenv build-pootle-release
     (build-pootle-release)$ pip install -r requirements/build.txt
     (build-pootle-release)$ export PYTHONPATH="${PYTHONPATH}:`pwd`"
     (build-pootle-release)$ export POOTLE_SETTINGS=~/.pootle/pootle_build.conf
-    (build-pootle-release)$ cd pootle/static/js && npm install && cd ../../../
     (build-pootle-release)$ make mo-all  # If we are shipping an RC
     (build-pootle-release)$ make build
     (build-pootle-release)$ deactivate
@@ -288,7 +287,7 @@ Test install and other tests
 The easiest way to test is in a virtualenv. You can test the installation of
 the new release using:
 
-.. code-block:: bash
+.. code-block:: console
 
     $ mkvirtualenv test-pootle-release
     (test-pootle-release)$ pip install dist/Pootle-$version.tar.bz2
@@ -302,18 +301,18 @@ You can then proceed with other tests such as checking:
 #. Assets are available in the package
 #. Quick SQLite installation check:
 
-   .. code-block:: bash
+   .. code-block:: console
 
      (test-pootle-release)$ pootle migrate
      (test-pootle-release)$ pootle initdb
-     (test-pootle-release)$ pootle start
+     (test-pootle-release)$ pootle runserver --insecure
      (test-pootle-release)$  # Browse to localhost:8000
 
 #. MySQL installation check:
 
    #. Create a blank database on MySQL:
 
-      .. code-block:: bash
+      .. code-block:: console
 
         mysql -u $db_user -p$db_password -e 'CREATE DATABASE `test-mysql-pootle` DEFAULT CHARACTER SET utf8 COLLATE utf8_general_ci;'
 
@@ -322,16 +321,16 @@ You can then proceed with other tests such as checking:
       to use this new MySQL database
    #. Run the following:
 
-      .. code-block:: bash
+      .. code-block:: console
 
         (test-pootle-release)$ pootle migrate
         (test-pootle-release)$ pootle initdb
-        (test-pootle-release)$ pootle start
+        (test-pootle-release)$ pootle runserver --insecure
         (test-pootle-release)$  # Browse to localhost:8000
 
    #. Drop the MySQL database you have created:
 
-      .. code-block:: bash
+      .. code-block:: console
 
         mysql -u $db_user -p$db_password -e 'DROP DATABASE `test-mysql-pootle`;'
 
@@ -341,27 +340,27 @@ You can then proceed with other tests such as checking:
       <https://github.com/translate/pootle-test-data>`_ repository
    #. Create a blank database on MySQL:
 
-      .. code-block:: bash
+      .. code-block:: console
 
         mysql -u $db_user -p$db_password -e 'CREATE DATABASE `test-mysql-pootle` DEFAULT CHARACTER SET utf8 COLLATE utf8_general_ci;'
 
    #. Import the database dump into the MySQL database:
 
-      .. code-block:: bash
+      .. code-block:: console
 
         mysql -u $db_user -p$db_password test-mysql-pootle < $db_dump_file
 
    #. Run the following:
 
-      .. code-block:: bash
+      .. code-block:: console
 
         (test-pootle-release)$ pootle migrate
-        (test-pootle-release)$ pootle start
+        (test-pootle-release)$ pootle runserver --insecure
         (test-pootle-release)$  # Browse to localhost:8000
 
    #. Drop the MySQL database you have created:
 
-      .. code-block:: bash
+      .. code-block:: console
 
         mysql -u $db_user -p$db_password -e 'DROP DATABASE `test-mysql-pootle`;'
 
@@ -374,13 +373,13 @@ You can then proceed with other tests such as checking:
 #. Meta information about the package is correct. This is stored in
    :file:`setup.py`, to see some options to display meta-data use:
 
-   .. code-block:: bash
+   .. code-block:: console
 
        $ ./setup.py --help
 
    Now you can try some options like:
 
-   .. code-block:: bash
+   .. code-block:: console
 
        $ ./setup.py --name
        $ ./setup.py --version
@@ -396,7 +395,7 @@ You can then proceed with other tests such as checking:
 
 Finally clean your test environment:
 
-.. code-block:: bash
+.. code-block:: console
 
     (test-pootle-release)$ deactivate
     $ rmvirtualenv test-pootle-release
@@ -416,7 +415,7 @@ You should only tag once you are happy with your release as there are some
 things that we can't undo. You can safely branch for a ``stable/`` branch
 before you tag.
 
-.. code-block:: bash
+.. code-block:: console
 
     $ git checkout -b stable/2.6.0
     $ git push origin stable/2.6.0
@@ -459,7 +458,7 @@ Publish on PyPI
    These can be stored in :file:`$HOME/.pypirc` and will contain your username
    and password. A first run of:
 
-   .. code-block:: bash
+   .. code-block:: console
 
        $ ./setup.py register
 
@@ -469,7 +468,7 @@ Publish on PyPI
 
 Run the following to publish the package on PyPI:
 
-.. code-block:: bash
+.. code-block:: console
 
     $ make publish-pypi
 
@@ -498,7 +497,7 @@ Update Pootle website
 
 We use github pages for the website. First we need to checkout the pages:
 
-.. code-block:: bash
+.. code-block:: console
 
     $ git checkout gh-pages
 
@@ -524,16 +523,12 @@ Let people know that there is a new version:
    - translate-pootle@lists.sourceforge.net
    - translate-devel@lists.sourceforge.net
 
-#. Adjust the #pootle channel notice. Use ``/topic [new topic]`` to change the
-   topic. It is easier if you copy the previous topic and adjust it.
-
-   .. note:: You might need to identify yourself by using
-      ``/msg nickserv identify [password]`` so the IRC server knows you in
-      order to check if you have enough permissions.
-
+#. Adjust the `Pootle channel <https://gitter.im/translate/pootle>`_ notice.
+   Use ``/topic [new topic]`` to change the topic. It is easier if you copy the
+   previous topic and adjust it.
 #. Email important users
 #. Tweet about it
-#. Update `Pootle's Wikipedia page <http://en.wikipedia.org/wiki/Pootle>`_
+#. Update `Pootle's Wikipedia page <https://en.wikipedia.org/wiki/Pootle>`_
 
 
 Post-Releasing Tasks

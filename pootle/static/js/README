@@ -52,9 +52,6 @@ Directory contents
 
   + mt/
 
-    - apertium.js :
-      Script to load translation suggestions using the Apertium service.
-
     - google-translate.js :
       Script to load translation suggestions using the Google Translate service.
 
@@ -70,11 +67,6 @@ Directory contents
       Version 20120106.
 
       https://code.google.com/p/google-diff-match-patch/
-
-    - iso8601.js :
-      Date.parse with progressive enhancement for ISO 8601.
-
-      https://github.com/csnover/js-iso8601
 
     - levenshtein.js :
       Library to calculate Levenshtein edit distance/similarity ratio.
@@ -135,14 +127,6 @@ Directory contents
         Version 0.8.8
 
         http://backbonerelational.org
-
-      - backbone.queryparameters.js :
-        Proper support for routing using query parameters.
-
-        Using 12e9f46c from git along with the shim required for Backbone
-        1.1.
-
-        https://github.com/jhudson8/backbone-query-parameters
 
       - backbone.safesync.js :
         Prevents duplicated fetches in models and collections.
@@ -206,18 +190,6 @@ Directory contents
         Using patched version to remove `$.browser` calls.
 
         http://github.com/tkyk/jquery-history-plugin/
-
-      - jquery.jsonp.js :
-        Alternative solution to jQuery's JSONP support.
-
-        jQuery's JSONP support has some limitations (the abort method doesn't
-        really abort), and this plugin tries to address those issues.
-
-        These features may be implemented in jQuery core at some stage.
-
-        Using version 2.4.0.
-
-        https://github.com/jaubourg/jquery-jsonp
 
       - jquery.magnific-popup.js :
         Lightbox overlay popups to display all sorts of content: images,

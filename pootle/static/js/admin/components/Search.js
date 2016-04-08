@@ -6,16 +6,14 @@
  * AUTHORS file for copyright and authorship information.
  */
 
-'use strict';
-
 import cx from 'classnames';
 import React from 'react';
-import _ from 'underscore';
 
 import ItemTable from './ItemTable';
+import SearchBox from './SearchBox';
 
 
-let Search = React.createClass({
+const Search = React.createClass({
 
   propTypes: {
     fields: React.PropTypes.array.isRequired,
@@ -40,13 +38,13 @@ let Search = React.createClass({
 
   /* State-changing callbacks */
 
-  fetchResults(query) {
-    this.setState({isLoading: true});
-    this.props.onSearch(query).then(this.onResultsFetched);
+  onResultsFetched() {
+    this.setState({ isLoading: false });
   },
 
-  onResultsFetched(data) {
-    this.setState({isLoading: false});
+  fetchResults(query) {
+    this.setState({ isLoading: true });
+    this.props.onSearch(query).then(this.onResultsFetched);
   },
 
   loadMore() {
@@ -57,19 +55,24 @@ let Search = React.createClass({
   /* Layout */
 
   render() {
-    let { isLoading } = this.state;
-    let { items } = this.props;
+    const { isLoading } = this.state;
+    const { items } = this.props;
     let loadMoreBtn;
 
     if (items.count > 0 && items.length < items.count) {
-      loadMoreBtn = <button className="btn" onClick={this.loadMore}>
-                    {gettext('Load More')}
-                    </button>;
+      loadMoreBtn = (
+        <button
+          className="btn"
+          onClick={this.loadMore}
+        >
+          {gettext('Load More')}
+        </button>
+      );
     }
 
-    let resultsClassNames = cx({
+    const resultsClassNames = cx({
       'search-results': true,
-      'loading': isLoading
+      loading: isLoading,
     });
 
     return (
@@ -82,7 +85,8 @@ let Search = React.createClass({
             <SearchBox
               onSearch={this.props.onSearch}
               placeholder={this.props.searchPlaceholder}
-              searchQuery={this.props.searchQuery} />
+              searchQuery={this.props.searchQuery}
+            />
           </div>
           <div className={resultsClassNames}>
           {isLoading && this.props.items.length === 0 ?
@@ -93,7 +97,8 @@ let Search = React.createClass({
                 items={items}
                 resultsCaption={this.props.resultsCaption}
                 selectedItem={this.props.selectedItem}
-                onSelectItem={this.props.onSelectItem} />
+                onSelectItem={this.props.onSelectItem}
+              />
               {loadMoreBtn}
             </div>
           }
@@ -101,74 +106,7 @@ let Search = React.createClass({
         </div>
       </div>
     );
-  }
-
-});
-
-
-let SearchBox = React.createClass({
-
-  propTypes: {
-    onSearch: React.PropTypes.func.isRequired,
-    placeholder: React.PropTypes.string,
-    searchQuery: React.PropTypes.string,
   },
-
-  /* Lifecycle */
-
-  getInitialState() {
-    return {
-      // XXX: review, prop should be explicitly named `initialSearchQuery`
-      searchQuery: this.props.searchQuery
-    };
-  },
-
-  componentWillReceiveProps(nextProps) {
-    if (nextProps.searchQuery !== this.state.searchQuery) {
-      this.setState({searchQuery: nextProps.searchQuery});
-    }
-  },
-
-  componentWillMount() {
-    this.handleSearchDebounced = _.debounce(function () {
-      this.props.onSearch.apply(this, [this.state.searchQuery]);
-    }, 300);
-  },
-
-  componentDidMount() {
-    React.findDOMNode(this.refs.input).focus();
-  },
-
-
-  /* Handlers */
-
-  handleKeyUp(e) {
-    let key = e.nativeEvent.keyCode;
-    if (key === 27) {
-      React.findDOMNode(this.refs.input).blur();
-    }
-  },
-
-  handleChange() {
-    this.setState({searchQuery: React.findDOMNode(this.refs.input).value});
-    this.handleSearchDebounced();
-  },
-
-
-  /* Layout */
-
-  render() {
-    return (
-      <input
-        type="text"
-        ref="input"
-        value={this.state.searchQuery}
-        onChange={this.handleChange}
-        onKeyUp={this.handleKeyUp}
-        {...this.props}
-      />
-    );
-  }
 
 });
 

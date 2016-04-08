@@ -116,22 +116,21 @@ class ErrorPagesMiddleware(object):
                     'login_link': reverse('account_login'),
                 }
                 login_msg = _(
-                    'You need to <a class="js-login" href="%(login_link)s">login</a> '
-                    'to access this page.', msg_args
+                    'You need to <a class="js-login" '
+                    'href="%(login_link)s">login</a> to access this page.',
+                    msg_args
                 )
                 ctx["login_message"] = login_msg
 
             return HttpResponseForbidden(
-                    render_to_string('errors/403.html', ctx,
-                                     RequestContext(request))
-                )
+                render_to_string('errors/403.html', ctx,
+                                 RequestContext(request)))
         elif (exception.__class__.__name__ in
                 ('OperationalError', 'ProgrammingError', 'DatabaseError')):
-            # HACKISH: Since exceptions thrown by different databases do
-            # not share the same class heirarchy (DBAPI2 sucks) we have to
-            # check the class name instead. Since python uses duck typing
-            # I will call this
-            # poking-the-duck-until-it-quacks-like-a-duck-test
+            # HACKISH: Since exceptions thrown by different databases do not
+            # share the same class heirarchy (DBAPI2 sucks) we have to check
+            # the class name instead. Since python uses duck typing I will call
+            # this poking-the-duck-until-it-quacks-like-a-duck-test
             return handle_exception(request, exception, 'errors/db.html')
         else:
             return handle_exception(request, exception, 'errors/500.html')

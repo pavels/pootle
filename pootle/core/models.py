@@ -15,6 +15,10 @@ from .mixins import TreeItem
 cache = get_cache('redis')
 
 
+class NoRevision(Exception):
+    pass
+
+
 class Revision(object):
     """Wrapper around the revision counter stored in Redis."""
 
@@ -38,10 +42,10 @@ class Revision(object):
     def get(cls):
         """Gets the current revision number.
 
-        :return: The current revision number, or the initial number if
-            there's no revision stored yet.
+        :return: The current revision number, or `None` if
+            there's no revision set.
         """
-        return cache.get(cls.CACHE_KEY, cls.INITIAL)
+        return cache.get(cls.CACHE_KEY)
 
     @classmethod
     def set(cls, value):
@@ -71,7 +75,7 @@ class Revision(object):
         try:
             return cache.incr(cls.CACHE_KEY)
         except ValueError:
-            return cls.INITIAL
+            raise NoRevision()
 
 
 class VirtualResource(TreeItem):
@@ -87,6 +91,7 @@ class VirtualResource(TreeItem):
     Don't use this object as-is, rather subclass it and adapt the
     implementation details for each context.
     """
+
     def __init__(self, resources, pootle_path, *args, **kwargs):
         self.resources = resources  #: Collection of underlying resources
         self.pootle_path = pootle_path
@@ -96,7 +101,7 @@ class VirtualResource(TreeItem):
     def __unicode__(self):
         return self.pootle_path
 
-    ### TreeItem
+    # # # TreeItem
 
     def get_children(self):
         return self.resources
@@ -104,4 +109,4 @@ class VirtualResource(TreeItem):
     def get_cachekey(self):
         return self.pootle_path
 
-    ### /TreeItem
+    # # # /TreeItem

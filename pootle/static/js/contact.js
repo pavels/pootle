@@ -6,36 +6,35 @@
  * AUTHORS file for copyright and authorship information.
  */
 
-'use strict';
-
-var $ = require('jquery');
-
-require('jquery-magnific-popup');
-require('jquery-serializeObject');
+import $ from 'jquery';
+import 'jquery-magnific-popup';
+import 'jquery-serializeObject';
 
 
-var sel = {
+const sel = {
   data: {
     target: '[data-action="contact"]',
     subjectPrefix: 'subject-prefix',
     subject: 'subject',
-    body: 'body'
+    body: 'body',
   },
   trigger: '.js-contact',
   wrapper: '#js-contact',
   form: '#js-contact form',
   formSent: '#js-sent',
   subject: '#js-contact #id_subject',
-  body: '#js-contact #id_body'
+  body: '#js-contact #id_body',
 };
 
 
-var contact = {
+const contact = {
 
   url: null,
 
-  init: function (options) {
-    options && $.extend(this, options);
+  init(options) {
+    if (options) {
+      $.extend(this, options);
+    }
 
     $(document).on('click', sel.trigger, (e) => {
       e.preventDefault();
@@ -45,26 +44,24 @@ var contact = {
     $(document).on('submit', sel.form, this.onSubmit.bind(this));
   },
 
-  onClick: function (e) {
+  onClick(e) {
     e.preventDefault();
 
-    var $el = $(e.target),
-        sP = $el.data(sel.data.subjectPrefix),
-        subjectPrefix = sP ? ['[', sP, '] '].join('') : sP,
-        subject = $el.data(sel.data.subject),
-        body = $el.data(sel.data.body);
+    const $el = $(e.target);
+    const sP = $el.data(sel.data.subjectPrefix);
+    const subjectPrefix = sP ? ['[', sP, '] '].join('') : sP;
+    const subject = $el.data(sel.data.subject);
+    const body = $el.data(sel.data.body);
 
     this.open({
-      subjectPrefix: subjectPrefix,
-      subject: subject,
-      body: body,
+      subjectPrefix,
+      subject,
+      body,
     });
   },
 
-  open: function (opts) {
-    opts = opts || {};
-
-    var contactUrl = opts.url || this.url;
+  open(opts = {}) {
+    const contactUrl = opts.url || this.url;
     if (contactUrl === null) {
       return false;
     }
@@ -72,82 +69,94 @@ var contact = {
     $.magnificPopup.open({
       items: {
         src: contactUrl,
-        type: 'ajax'
+        type: 'ajax',
       },
       callbacks: {
-        ajaxContentAdded: function () {
-          var newSubject = [];
-          opts.subjectPrefix && newSubject.push(opts.subjectPrefix);
-          opts.subject && newSubject.push(opts.subject);
-
-          newSubject.length && $(sel.subject).val(newSubject.join(''));
-          opts.body && $(sel.body).val(opts.body);
-        }
+        ajaxContentAdded() {
+          const newSubject = [];
+          if (opts.subjectPrefix) {
+            newSubject.push(opts.subjectPrefix);
+          }
+          if (opts.subject) {
+            newSubject.push(opts.subject);
+          }
+          if (newSubject.length) {
+            $(sel.subject).val(newSubject.join(''));
+          }
+          if (opts.body) {
+            $(sel.body).val(opts.body);
+          }
+        },
       },
-      mainClass: 'popup-ajax'
+      mainClass: 'popup-ajax',
     });
+    return true;
   },
 
-  onSubmit: function (e) {
+  onSubmit(e) {
     e.preventDefault();
 
-    var $form = $(sel.form),
-        url = $form.attr('action'),
-        data = $form.serializeObject(),
-        captchaCallbacks = {
-          sfn: 'PTL.contact.onSubmit',
-          efn: 'PTL.contact.onError'
-        };
+    const $form = $(sel.form);
+    const url = $form.attr('action');
+    const data = $form.serializeObject();
+    const captchaCallbacks = {
+      sfn: 'PTL.contact.onSubmit',
+      efn: 'PTL.contact.onError',
+    };
     $.extend(data, captchaCallbacks);
 
     this.sendMessage(url, data);
   },
 
-  sendMessage: function (url, data) {
-    var that = this;
+  sendMessage(url, data) {
+    const that = this;
     $.ajax({
-      url: url,
+      url,
+      data,
       type: 'POST',
-      data: data,
       dataType: 'json',
       success: that.onSuccess.bind(that),
       error: that.onError.bind(that),
     });
   },
 
-  onSuccess: function (xhr) {
+  onSuccess() {
     // Display thank you message
     $(sel.wrapper).hide();
     $(sel.formSent).show();
   },
 
-  onError: function (xhr) {
+  onError(xhr) {
     this.displayErrors(xhr.responseJSON.errors);
   },
 
   /* Displays errors returned by the contact request */
-  displayErrors: function (errors) {
+  displayErrors(errors) {
     $('ul.errorlist').remove();
 
-    for (var fieldName in errors) {
+    for (const fieldName in errors) {
+      if (!errors.hasOwnProperty(fieldName)) {
+        continue;
+      }
+
       this.validationError(fieldName, errors[fieldName]);
     }
   },
 
   /* Injects a form validation error next to the input it failed to
    * validate */
-  validationError: function (fieldName, msgs) {
-    var $field = $('#id_' + fieldName),
-        errorList = ['<ul class="errorlist">'];
-    for (var i=0; i<msgs.length; i++) {
+  validationError(fieldName, msgs) {
+    const $field = $(`#id_${fieldName}`);
+    const errorList = ['<ul class="errorlist">'];
+    for (let i = 0; i < msgs.length; i++) {
       errorList.push(['<li>', msgs[i], '</li>'].join(''));
     }
     errorList.push(['</ul>']);
 
     $field.after(errorList.join(''));
-  }
+  },
 
 };
 
 
-module.exports = contact;
+export default contact;

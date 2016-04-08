@@ -9,7 +9,6 @@
 
 from functools import wraps
 
-from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404
 from django.utils.translation import ugettext as _
@@ -40,19 +39,15 @@ def get_unit_context(permission_code=None):
         @wraps(f)
         def decorated_f(request, uid, *args, **kwargs):
             unit = get_object_or_404(
-                    Unit.objects.select_related("store__translation_project",
-                                                "store__parent"),
-                    id=uid,
+                Unit.objects.select_related("store__translation_project",
+                                            "store__parent"),
+                id=uid,
             )
 
             tp = unit.store.translation_project
             request.translation_project = tp
 
-            User = get_user_model()
-            current_user = User.get(request.user)
-            request.profile = current_user
-
-            request.permissions = get_matching_permissions(current_user,
+            request.permissions = get_matching_permissions(request.user,
                                                            tp.directory)
 
             if (permission_code is not None and

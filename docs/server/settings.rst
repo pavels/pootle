@@ -229,9 +229,9 @@ Configuration settings for applications used by Pootle.
   .. versionadded:: 2.7
 
   The graph of a user's activity, within reports, can be `marked
-  <https://code.google.com/p/flot-marks/>`_  to indicate events by using
-  this function. The setting must contain an import path to such a marking
-  function (string).
+  <https://code.google.com/archive/p/flot-marks/>`_  to indicate events by
+  using this function. The setting must contain an import path to such a
+  marking function (string).
 
   The function receives the user and graph ranges and returns an array of
   applicable marks.
@@ -248,6 +248,32 @@ Configuration settings for applications used by Pootle.
   - ``position``, specifying the point in the x-axis where the mark should
     be set (UNIX timestamp multiplied by 1000), and
   - ``label`` specifying the text that will be displayed next to the mark.
+
+
+.. setting:: POOTLE_SCORE_COEFFICIENTS
+
+``POOTLE_SCORE_COEFFICIENTS``
+  Default::
+
+    {
+        'EDIT': 5.0/7,
+        'REVIEW': 2.0/7,
+        'SUGGEST': 0.2,
+        'ANALYZE': 0.1,
+    }
+
+  .. versionadded:: 2.7.3
+
+  Parameters:
+
+  - ``EDIT`` - coefficient to calculate an user score change for
+    edit actions.
+  - ``REVIEW`` - coefficient to calculate an user score change for
+    review actions.
+  - ``SUGGEST`` - coefficient to calculate an user score change for
+    new suggestions.
+  - ``ANALYZE`` - coefficient to calculate an user score change for
+    rejecting suggestions and penalty for the rejected suggestion.
 
 
 60-translation.conf
@@ -281,20 +307,66 @@ Translation environment configuration settings.
 
 .. setting:: POOTLE_TM_SERVER
 
-.. versionadded:: 2.7
-
 ``POOTLE_TM_SERVER``
-  Default: Set to ``http://localhost:9200/translations``
+  .. versionadded:: 2.7
+
+  .. versionchanged:: 2.7.3
+
+     Added the :setting:`WEIGHT <POOTLE_TM_SERVER-WEIGHT>` and
+     :setting:`MIN_SIMILARITY <POOTLE_TM_SERVER-MIN_SIMILARITY>` options. Also
+     added another default TM used to import external translations from files.
+
+
+  Default: ``{}`` (empty dict)
+
+  Example configuration for local/external TM server:
+
+  .. code-block:: python
+
+    {
+        'local': {
+            'ENGINE': 'pootle.core.search.backends.ElasticSearchBackend',
+            'HOST': 'localhost',
+            'PORT': 9200,
+            'INDEX_NAME': 'translations',
+            'WEIGHT': 1,
+        },
+        'external': {
+            'ENGINE': 'pootle.core.search.backends.ElasticSearchBackend',
+            'HOST': 'localhost',
+            'PORT': 9200,
+            'INDEX_NAME': 'external-translations',
+            'WEIGHT': 0.9,
+        },
+    }
+
 
   This is configured to access a standard Elasticsearch setup.  Change the
   settings for any non-standard setup.  Change ``HOST`` and ``PORT`` settings
   as required.
 
-  Use ``MIN_SCORE`` to set the Levenshtein Distance score.  Set it to ``AUTO``
-  so that Eslasticsearch will adjust the required score depending on the length
-  of the string being translated. Elasticsearch documentation provides further
-  details on `Fuzzy matching
-  <https://www.elastic.co/guide/en/elasticsearch/reference/current/common-options.html#fuzziness>`_.
+  The default ``local`` TM is automatically updated every time a new
+  translation is submitted. The other TMs are not automatically updated so they
+  can be trusted to provide selected high quality translations.
+
+  .. setting:: POOTLE_TM_SERVER-INDEX_NAME
+
+  Every TM server must have its own unique ``INDEX_NAME``.
+
+  .. setting:: POOTLE_TM_SERVER-WEIGHT
+
+  ``WEIGHT`` provides a weighting factor to alter the final score for TM
+  results from this TM server. Valid values are between ``0.0`` and ``1.0``,
+  both included. Defaults to ``1.0`` if not provided.
+
+  .. setting:: POOTLE_TM_SERVER-MIN_SIMILARITY
+
+  ``MIN_SIMILARITY`` serves as a threshold value to filter out results that are
+  potentially too far from the source text. The Levenshtein distance is
+  considered when measuring how similar the text is from the source text, and
+  this represents a real value in the (0..1) range, 1 being 100% similarity.
+  The default value (0.7) should work fine in most cases, although your mileage
+  might vary.
 
 
 .. setting:: POOTLE_MT_BACKENDS
@@ -309,18 +381,13 @@ Translation environment configuration settings.
 
   Available options are:
 
-  ``APERTIUM``: Apertium service.
-    For this service you need to set the API key. Get your key at
-    http://api.apertium.org/register.jsp
-
   ``GOOGLE_TRANSLATE``: Google Translate service.
-    For this service you need to set the API key. Note that Google Translate
-    API is a paid service. See more at
-    https://cloud.google.com/translate/v2/pricing
+    For this service you need to obtain an API key. Note that Google Translate
+    API is a `paid service <https://cloud.google.com/translate/v2/pricing>`_.
 
   ``YANDEX_TRANSLATE``: Yandex.Translate service.
-    For this service you need to set the API key. Get your key at
-    https://tech.yandex.com/keys/get/?service=trnsl
+    For this service you need to `obtain a Yandex API key
+    <https://tech.yandex.com/keys/get/?service=trnsl>`_.
 
 .. setting:: PARSE_POOL_CULL_FREQUENCY
 

@@ -20,8 +20,7 @@ from django.template import RequestContext
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.utils.translation import ugettext_lazy as _
-from django.views.generic import View, CreateView
-from django.views.generic.detail import SingleObjectMixin
+from django.views.generic import CreateView
 
 from accounts.models import CURRENCIES
 from pootle.core.decorators import admin_required
@@ -30,15 +29,16 @@ from pootle.core.http import (JsonResponse, JsonResponseBadRequest,
 from pootle.core.log import PAID_TASK_ADDED, PAID_TASK_DELETED, log
 from pootle.core.utils.json import jsonify
 from pootle.core.utils.timezone import make_aware, make_naive
-from pootle.core.views import AjaxResponseMixin
+from pootle.core.views import AjaxResponseMixin, UserObjectMixin
 from pootle_misc.util import (ajax_required, get_date_interval,
                               get_max_month_datetime, import_func)
-from pootle_profile.views import (NoDefaultUserMixin, TestUserFieldMixin,
-                                  DetailView)
+from pootle_profile.views import (DetailView, NoDefaultUserMixin,
+                                  TestUserFieldMixin)
 from pootle_statistics.models import ScoreLog
 
-from .forms import UserRatesForm, PaidTaskForm
+from .forms import PaidTaskForm, UserRatesForm
 from .models import PaidTask, PaidTaskTypes, ReportActionTypes
+from .utils import get_grouped_word_stats
 
 
 # Django field query aliases
@@ -58,10 +58,7 @@ STAT_FIELDS = ['n1']
 INITIAL_STATES = ['new', 'edit']
 
 
-class UserStatsView(NoDefaultUserMixin, DetailView):
-    model = get_user_model()
-    slug_field = 'username'
-    slug_url_kwarg = 'username'
+class UserStatsView(NoDefaultUserMixin, UserObjectMixin, DetailView):
     template_name = 'user/stats.html'
 
     def get_context_data(self, **kwargs):
@@ -79,10 +76,7 @@ class UserStatsView(NoDefaultUserMixin, DetailView):
         return ctx
 
 
-class UserActivityView(NoDefaultUserMixin, SingleObjectMixin, View):
-    model = get_user_model()
-    slug_field = 'username'
-    slug_url_kwarg = 'username'
+class UserActivityView(NoDefaultUserMixin, UserObjectMixin, DetailView):
 
     @method_decorator(ajax_required)
     def dispatch(self, request, *args, **kwargs):
@@ -94,16 +88,14 @@ class UserActivityView(NoDefaultUserMixin, SingleObjectMixin, View):
         return JsonResponse(data)
 
 
-class UserDetailedStatsView(NoDefaultUserMixin, DetailView):
-    model = get_user_model()
-    slug_field = 'username'
-    slug_url_kwarg = 'username'
+class UserDetailedStatsView(NoDefaultUserMixin, UserObjectMixin, DetailView):
     template_name = 'user/detailed_stats.html'
 
     def dispatch(self, request, *args, **kwargs):
         self.month = request.GET.get('month', None)
         self.user = request.user
-        return super(UserDetailedStatsView, self).dispatch(request, *args, **kwargs)
+        return super(UserDetailedStatsView, self).dispatch(request, *args,
+                                                           **kwargs)
 
     def get_context_data(self, **kwargs):
         ctx = super(UserDetailedStatsView, self).get_context_data(**kwargs)
@@ -113,27 +105,21 @@ class UserDetailedStatsView(NoDefaultUserMixin, DetailView):
         return ctx
 
 
-class PaidTaskFormView(AjaxResponseMixin, CreateView):
+class AddUserPaidTaskView(NoDefaultUserMixin, TestUserFieldMixin,
+                          AjaxResponseMixin, UserObjectMixin, CreateView):
     form_class = PaidTaskForm
     template_name = 'admin/reports/paid_task_form.html'
 
     def get_success_url(self):
-        # XXX: This is unused. We don't need this URL, but
-        # the parent :cls:`PaidTaskFormView` enforces us to set some value here
+        # XXX: This is unused but enforced by `CreateView`
         return reverse('pootle-user-stats', kwargs=self.kwargs)
 
     def form_valid(self, form):
-        super(PaidTaskFormView, self).form_valid(form)
+        super(AddUserPaidTaskView, self).form_valid(form)
         # ignore redirect response
         log('%s\t%s\t%s' % (self.object.user.username, PAID_TASK_ADDED,
                             self.object))
         return JsonResponse({'result': self.object.id})
-
-
-class AddUserPaidTaskView(NoDefaultUserMixin, TestUserFieldMixin, PaidTaskFormView):
-    model = get_user_model()
-    slug_field = 'username'
-    slug_url_kwarg = 'username'
 
 
 @admin_required
@@ -161,7 +147,7 @@ def reports(request):
 def get_detailed_report_context(user, month):
     [start, end] = get_date_interval(month)
 
-    totals = {'translated': {}, 'reviewed': {}, 'suggested': 0, 'total': 0,
+    totals = {'translated': {}, 'reviewed': {}, 'suggested': 0,
               'paid_tasks': {},
               'all': 0}
     items = []
@@ -174,11 +160,8 @@ def get_detailed_report_context(user, month):
                     creation_time__lte=end) \
             .order_by('creation_time')
 
-        tasks = PaidTask.objects \
-                .filter(user=user,
-                        datetime__gte=start,
-                        datetime__lte=end) \
-                .order_by('datetime')
+        tasks = PaidTask.objects.filter(user=user, datetime__gte=start,
+                                        datetime__lte=end).order_by('datetime')
 
         items = []
 
@@ -188,11 +171,19 @@ def get_detailed_report_context(user, month):
             wordcount = None
 
             translated, reviewed = score.get_paid_wordcounts()
+            translated_details = {}
             if translated is not None:
                 action = ReportActionTypes.TRANSLATION
                 subtotal = score.rate * translated
                 wordcount = translated
-
+                translated_details['raw_rate'] = score.rate - score.review_rate
+                translated_details['raw_translated_wordcount'] = \
+                    score.wordcount * (1 - score.get_similarity())
+                translated_details['raw_subtotal'] = \
+                    (translated_details['raw_translated_wordcount'] *
+                     translated_details['raw_rate'])
+                translated_details['review_subtotal'] = \
+                    score.wordcount * score.review_rate
                 if score.rate in totals['translated']:
                     totals['translated'][score.rate]['words'] += translated
                 else:
@@ -223,6 +214,8 @@ def get_detailed_report_context(user, month):
                     'similarity': score.get_similarity() * 100,
                     'subtotal': subtotal,
                     'wordcount': wordcount,
+                    'source_wordcount': score.wordcount,
+                    'translated_details': translated_details,
                     'creation_time': score.creation_time,
                 })
 
@@ -256,16 +249,18 @@ def get_detailed_report_context(user, month):
                 }
 
         for rate, words in totals['translated'].items():
-            totals['translated'][rate]['words'] = totals['translated'][rate]['words']
-            totals['translated'][rate]['subtotal'] = rate * totals['translated'][rate]['words']
+            totals['translated'][rate]['rounded_words'] = \
+                int(round(totals['translated'][rate]['words']))
+            totals['translated'][rate]['subtotal'] = \
+                rate * totals['translated'][rate]['rounded_words']
             totals['all'] += totals['translated'][rate]['subtotal']
 
         for rate, words in totals['reviewed'].items():
-            totals['reviewed'][rate]['words'] = totals['reviewed'][rate]['words']
-            totals['reviewed'][rate]['subtotal'] = rate * totals['reviewed'][rate]['words']
+            totals['reviewed'][rate]['subtotal'] = (
+                rate * totals['reviewed'][rate]['words'])
             totals['all'] += totals['reviewed'][rate]['subtotal']
 
-        totals['all'] = totals['all']
+        totals['all'] = round(totals['all'], 2) + 0
 
         items = sorted(items, key=lambda x: x['creation_time'])
 
@@ -397,15 +392,6 @@ def remove_paid_task(request, task_id=None):
     return JsonResponseBadRequest({'error': _('Invalid request method')})
 
 
-def get_scores(user, start, end):
-    return ScoreLog.objects \
-        .select_related('submission__translation_project__project',
-                        'submission__translation_project__language',) \
-        .filter(user=user,
-                creation_time__gte=start,
-                creation_time__lte=end)
-
-
 def get_activity_data(request, user, month):
     [start, end] = get_date_interval(month)
 
@@ -429,11 +415,12 @@ def get_activity_data(request, user, month):
         'start': start.strftime('%Y-%m-%d'),
         'end': end.strftime('%Y-%m-%d'),
         'utc_offset': start.strftime("%z"),
-        'admin_permalink': request.build_absolute_uri(reverse('pootle-reports')),
+        'admin_permalink': request.build_absolute_uri(
+            reverse('pootle-reports')),
     }
 
     if user != '':
-        scores = get_scores(user, start, end)
+        scores = ScoreLog.objects.for_user_in_range(user, start, end)
         scores = list(scores.order_by(SCORE_TRANSLATION_PROJECT))
         json['grouped'] = get_grouped_word_stats(scores, user, month)
         scores.sort(key=lambda x: x.creation_time)
@@ -511,7 +498,8 @@ def get_daily_activity(user, scores, start, end):
         translated, reviewed = score.get_paid_wordcounts()
         suggested = score.get_suggested_wordcount()
 
-        if any(map(lambda x: x is not None, [translated, reviewed, suggested])):
+        if any(map(lambda x: x is not None, [translated, reviewed,
+                                             suggested])):
             translated = 0 if translated is None else translated
             reviewed = 0 if reviewed is None else reviewed
             suggested = 0 if suggested is None else suggested
@@ -544,14 +532,56 @@ def get_daily_activity(user, scores, start, end):
     return result
 
 
+def get_rates(user, start, end):
+    """Get user rates that were set for the user during a period
+    from start to end. Raise an exception if the user has multiple rates
+    during the period.
+
+    :param user: get rates for this User object.
+    :param start: datetime
+    :param end: datetime
+    :return: a tuple ``(rate, review_rate, hourly_rate)`` where ``rate`` is the
+        translation rate, and ``review_rate`` is the review rate, and
+        ``hourly_rate`` is the rate for hourly work that can be added as
+        PaidTask.
+    """
+    scores = ScoreLog.objects.for_user_in_range(user, start, end)
+    rate, review_rate, hourly_rate = 0, 0, 0
+    rates = scores.values('rate', 'review_rate').distinct()
+    if len(rates) > 1:
+        raise Exception("Multiple user [%s] rate values." % user.username)
+    elif len(rates) == 1:
+        rate = rates[0]['rate']
+        review_rate = rates[0]['review_rate']
+
+    tasks = PaidTask.objects.for_user_in_range(user, start, end)
+    task_rates = tasks.values('task_type', 'rate').distinct()
+    for task_rate in task_rates:
+        if (task_rate['task_type'] == PaidTaskTypes.TRANSLATION and
+            rate > 0 and
+            task_rate['rate'] != rate):
+            raise Exception("Multiple user [%s] rate values." % user.username)
+        if (task_rate['task_type'] == PaidTaskTypes.REVIEW and
+            review_rate > 0 and
+            task_rate['rate'] != review_rate):
+            raise Exception("Multiple user [%s] rate values." % user.username)
+        if task_rate['task_type'] == PaidTaskTypes.HOURLY_WORK:
+            if hourly_rate > 0 and task_rate['rate'] != hourly_rate:
+                raise Exception("Multiple user [%s] rate values." %
+                                user.username)
+            hourly_rate = task_rate['rate']
+
+    rate = rate if rate > 0 else user.rate
+    review_rate = review_rate if review_rate > 0 else user.review_rate
+    hourly_rate = hourly_rate if hourly_rate > 0 else user.hourly_rate
+
+    return rate, review_rate, hourly_rate
+
+
 def get_paid_tasks(user, start, end):
     result = []
 
-    tasks = PaidTask.objects \
-        .filter(user=user,
-                datetime__gte=start,
-                datetime__lte=end) \
-        .order_by('pk')
+    tasks = PaidTask.objects.for_user_in_range(user, start, end)
 
     for task in tasks:
         result.append({
@@ -565,56 +595,6 @@ def get_paid_tasks(user, start, end):
         })
 
     return result
-
-
-def get_grouped_word_stats(scores, user=None, month=None):
-    result = []
-    tp = None
-    for score in scores:
-        if tp != score.submission.translation_project:
-            tp = score.submission.translation_project
-            row = {
-                'translation_project': u'%s / %s' %
-                    (tp.project.fullname, tp.language.fullname),
-                'project_code': tp.project.code,
-                'score_delta': 0,
-                'translated': 0,
-                'reviewed': 0,
-                'suggested': 0,
-            }
-            if user is not None:
-                submissions_filter = {
-                    'state': 'user-submissions',
-                    'user': user.username,
-                }
-                suggestions_filter = {
-                    'state': 'user-suggestions',
-                    'user': user.username,
-                }
-                if month is not None:
-                    submissions_filter['month'] = month
-                    suggestions_filter['month'] = month
-
-                row['tp_browse_url'] = tp.get_absolute_url()
-                row['tp_submissions_translate_url'] = \
-                    tp.get_translate_url(**submissions_filter)
-                row['tp_suggestions_translate_url'] = \
-                    tp.get_translate_url(**suggestions_filter)
-
-            result.append(row)
-
-        translated_words, reviewed_words = score.get_paid_wordcounts()
-        if translated_words is not None:
-            row['translated'] += translated_words
-        if reviewed_words is not None:
-            row['reviewed'] += reviewed_words
-        row['score_delta'] += score.score_delta
-
-        suggested_words = score.get_suggested_wordcount()
-        if suggested_words is not None:
-            row['suggested'] += suggested_words
-
-    return sorted(result, key=lambda x: x['translation_project'])
 
 
 def get_summary(scores, start, end):
@@ -693,6 +673,8 @@ def get_summary(scores, start, end):
     return result
 
 
+@ajax_required
+@admin_required
 def users(request):
     User = get_user_model()
     data = list(

@@ -6,28 +6,28 @@
  * AUTHORS file for copyright and authorship information.
  */
 
-'use strict';
-
 import assign from 'object-assign';
 import React from 'react';
-import { PureRenderMixin } from 'react/addons';
+import { PureRenderMixin } from 'react-addons-pure-render-mixin';
 
-import { FormElement } from 'components/forms';
-import { FormMixin } from 'mixins/forms';
+import FormElement from 'components/FormElement';
+import FormMixin from 'mixins/FormMixin';
 
+import { gotoScreen, requestPasswordReset } from '../actions';
 import AuthContent from './AuthContent';
 import RequestPasswordResetProgress from './RequestPasswordResetProgress';
 
 
-let RequestPasswordResetForm = React.createClass({
-  mixins: [PureRenderMixin, FormMixin],
+const RequestPasswordResetForm = React.createClass({
 
   propTypes: {
     canRegister: React.PropTypes.bool.isRequired,
+    dispatch: React.PropTypes.func.isRequired,
     formErrors: React.PropTypes.object.isRequired,
     isLoading: React.PropTypes.bool.isRequired,
   },
 
+  mixins: [PureRenderMixin, FormMixin],
 
   /* Lifecycle */
 
@@ -42,7 +42,7 @@ let RequestPasswordResetForm = React.createClass({
 
   componentWillReceiveProps(nextProps) {
     if (this.state.errors !== nextProps.formErrors) {
-      this.setState({errors: nextProps.formErrors});
+      this.setState({ errors: nextProps.formErrors });
     }
   },
 
@@ -51,17 +51,17 @@ let RequestPasswordResetForm = React.createClass({
 
   handleSignIn(e) {
     e.preventDefault();
-    this.props.flux.getActions('auth').gotoScreen('signIn');
+    this.props.dispatch(gotoScreen('signIn'));
   },
 
   handleSignUp(e) {
     e.preventDefault();
-    this.props.flux.getActions('auth').gotoScreen('signUp');
+    this.props.dispatch(gotoScreen('signUp'));
   },
 
   handleFormSubmit(e) {
     e.preventDefault();
-    this.props.flux.getActions('auth').requestPasswordReset(this.state.formData);
+    this.props.dispatch(requestPasswordReset(this.state.formData));
   },
 
 
@@ -79,25 +79,27 @@ let RequestPasswordResetForm = React.createClass({
       return <RequestPasswordResetProgress email={this.state.formData.email} />;
     }
 
-    let { errors } = this.state;
-    let { formData } = this.state;
+    const { errors } = this.state;
+    const { formData } = this.state;
 
     return (
       <AuthContent>
         <form
           method="post"
-          onSubmit={this.handleFormSubmit}>
+          onSubmit={this.handleFormSubmit}
+        >
           <div className="fields">
             {this.renderAllFormErrors()}
             <FormElement
+              autoFocus
               type="email"
-              attribute="email"
               label={gettext('Email Address')}
-              help={gettext('Enter your email address, and we will send you a message with the special link to reset your password.')}
-              autoFocus={true}
+              help={gettext('Enter your email address, and we will send you a ' +
+                            'message with the special link to reset your password.')}
               handleChange={this.handleChange}
-              formData={formData}
-              errors={errors}
+              name="email"
+              errors={errors.email}
+              value={formData.email}
             />
           </div>
           <div className="actions">
@@ -125,7 +127,7 @@ let RequestPasswordResetForm = React.createClass({
         </form>
       </AuthContent>
     );
-  }
+  },
 
 });
 

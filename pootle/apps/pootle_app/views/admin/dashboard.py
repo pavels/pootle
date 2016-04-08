@@ -11,20 +11,21 @@ import json
 import locale
 import os
 
+from redis.exceptions import ConnectionError
+
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.http import HttpResponse
 from django.shortcuts import render
 from django.utils.translation import ugettext as _, ungettext
 
-from django_rq.queues import get_queue, get_failed_queue
+from django_rq.queues import get_failed_queue, get_queue
 from django_rq.workers import Worker
-from redis.exceptions import ConnectionError
 
 from pootle.core.decorators import admin_required
 from pootle_misc.aggregate import sum_column
 from pootle_statistics.models import Submission
-from pootle_store.models import Unit, Suggestion
+from pootle_store.models import Suggestion, Unit
 from pootle_store.util import TRANSLATED
 
 
@@ -44,7 +45,8 @@ def server_stats():
     result = cache.get("server_stats")
     if result is None:
         result = {}
-        result['user_count'] = max(User.objects.filter(is_active=True).count()-2, 0)
+        result['user_count'] = max(User.objects.filter(
+            is_active=True).count()-2, 0)
         # 'default' and 'nobody' might be counted
         # FIXME: the special users should not be retuned with is_active
         result['submission_count'] = Submission.objects.count()
@@ -62,11 +64,15 @@ def server_stats_more(request):
 
         result = {}
         unit_query = Unit.objects.filter(state__gte=TRANSLATED).exclude(
-            store__translation_project__project__code__in=('pootle', 'tutorial', 'terminology')).exclude(
+            store__translation_project__project__code__in=(
+                'pootle', 'tutorial', 'terminology')
+        ).exclude(
             store__translation_project__language__code='templates').order_by()
         result['store_count'] = unit_query.values('store').distinct().count()
-        result['project_count'] = unit_query.values('store__translation_project__project').distinct().count()
-        result['language_count'] = unit_query.values('store__translation_project__language').distinct().count()
+        result['project_count'] = unit_query.values(
+            'store__translation_project__project').distinct().count()
+        result['language_count'] = unit_query.values(
+            'store__translation_project__language').distinct().count()
         sums = sum_column(unit_query, ('source_wordcount',), count=True)
         result['string_count'] = sums['count']
         result['word_count'] = sums['source_wordcount'] or 0
@@ -122,7 +128,7 @@ def rq_stats():
 def checks():
     from django.core.checks.registry import registry
 
-    return sum([check() for check in registry.registered_checks], [])
+    return registry.run_checks()
 
 
 @admin_required

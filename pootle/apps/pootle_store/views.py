@@ -9,46 +9,49 @@
 
 from itertools import groupby
 
+from translate.lang import data
+
+from django import forms
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ObjectDoesNotExist, PermissionDenied
 from django.core.urlresolvers import reverse
-from django.db.models import Max, Q
+from django.db.models import Q
 from django.http import Http404
 from django.shortcuts import redirect
-from django.template import loader, RequestContext
+from django.template import RequestContext, loader
+from django.utils import timezone
+from django.utils.functional import cached_property
+from django.utils.lru_cache import lru_cache
 from django.utils.safestring import mark_safe
 from django.utils.translation import to_locale, ugettext as _
 from django.utils.translation.trans_real import parse_accept_lang_header
-from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods
 
-from translate.filters.decorators import Category
-from translate.lang import data
-
-from pootle.core.dateparse import parse_datetime
 from pootle.core.decorators import (get_path_obj, get_resource,
                                     permission_required)
 from pootle.core.exceptions import Http400
 from pootle.core.http import JsonResponse, JsonResponseBadRequest
+from pootle.core.views import PootleJSON
 from pootle_app.models.directory import Directory
-from pootle_app.models.permissions import check_permission, check_user_permission
-from pootle_misc.checks import get_category_id, check_names
-from pootle_misc.forms import make_search_form
-from pootle_misc.util import ajax_required, to_int, get_date_interval
+from pootle_app.models.permissions import (check_permission,
+                                           check_user_permission)
+from pootle_misc.checks import check_names
+from pootle_misc.util import ajax_required
 from pootle_statistics.models import (Submission, SubmissionFields,
                                       SubmissionTypes)
 
 from .decorators import get_unit_context
 from .fields import to_python
-from .forms import (unit_comment_form_factory, unit_form_factory,
-                    highlight_whitespace)
-from .models import Unit, SuggestionStates
+from .forms import (
+    highlight_whitespace, unit_comment_form_factory,
+    unit_form_factory, UnitSearchForm)
+from .models import Unit
 from .templatetags.store_tags import (highlight_diffs, pluralize_source,
                                       pluralize_target)
-from .util import (UNTRANSLATED, FUZZY, TRANSLATED, STATES_MAP,
-                   find_altsrcs)
+from .unit.results import GroupedResults
+from .util import STATES_MAP, find_altsrcs, get_search_backend
 
 
 #: Mapping of allowed sorting criteria.
@@ -56,7 +59,7 @@ from .util import (UNTRANSLATED, FUZZY, TRANSLATED, STATES_MAP,
 #: will be used against the DB.
 ALLOWED_SORTS = {
     'units': {
-        'priority': 'priority',
+        'priority': '-priority',
         'oldest': 'submitted_on',
         'newest': '-submitted_on',
     },
@@ -84,8 +87,8 @@ def get_alt_src_langs(request, user, translation_project):
     source_language = project.source_language
 
     langs = user.alt_src_langs.exclude(
-            id__in=(language.id, source_language.id)
-        ).filter(translationproject__project=project)
+        id__in=(language.id, source_language.id)
+    ).filter(translationproject__project=project)
 
     project_alt_source = Language.objects.filter(
                 id = source_language.id
@@ -118,237 +121,6 @@ def get_alt_src_langs(request, user, translation_project):
     return langs
 
 
-def get_search_query(form, units_queryset):
-    words = form.cleaned_data['search'].split()
-    result = units_queryset.none()
-
-    if 'source' in form.cleaned_data['sfields']:
-        subresult = units_queryset
-        for word in words:
-            subresult = subresult.filter(source_f__icontains=word)
-        result = result | subresult
-
-    if 'target' in form.cleaned_data['sfields']:
-        subresult = units_queryset
-        for word in words:
-            subresult = subresult.filter(target_f__icontains=word)
-        result = result | subresult
-
-    if 'notes' in form.cleaned_data['sfields']:
-        translator_subresult = units_queryset
-        developer_subresult = units_queryset
-        for word in words:
-            translator_subresult = translator_subresult.filter(
-                translator_comment__icontains=word,
-            )
-            developer_subresult = developer_subresult.filter(
-                developer_comment__icontains=word,
-            )
-        result = result | translator_subresult | developer_subresult
-
-    if 'locations' in form.cleaned_data['sfields']:
-        subresult = units_queryset
-        for word in words:
-            subresult = subresult.filter(locations__icontains=word)
-        result = result | subresult
-
-    return result
-
-
-def get_search_exact_query(form, units_queryset):
-    phrase = form.cleaned_data['search']
-    result = units_queryset.none()
-
-    if 'source' in form.cleaned_data['sfields']:
-        subresult = units_queryset.filter(source_f__contains=phrase)
-        result = result | subresult
-
-    if 'target' in form.cleaned_data['sfields']:
-        subresult = units_queryset.filter(target_f__contains=phrase)
-        result = result | subresult
-
-    if 'notes' in form.cleaned_data['sfields']:
-        translator_subresult = units_queryset
-        developer_subresult = units_queryset
-        translator_subresult = translator_subresult.filter(
-            translator_comment__contains=phrase,
-        )
-        developer_subresult = developer_subresult.filter(
-            developer_comment__contains=phrase,
-        )
-        result = result | translator_subresult | developer_subresult
-
-    if 'locations' in form.cleaned_data['sfields']:
-        subresult = units_queryset.filter(locations__contains=phrase)
-        result = result | subresult
-
-    return result
-
-
-def get_search_step_query(form, units_queryset):
-    """Narrows down units query to units matching search string."""
-    if 'exact' in form.cleaned_data['soptions']:
-        return get_search_exact_query(form, units_queryset)
-
-    return get_search_query(form, units_queryset)
-
-
-def get_step_query(request, units_queryset):
-    """Narrows down unit query to units matching conditions in GET."""
-    if 'filter' in request.GET:
-        unit_filter = request.GET['filter']
-        username = request.GET.get('user', None)
-        modified_since = request.GET.get('modified-since', None)
-        month = request.GET.get('month', None)
-        sort_by_param = request.GET.get('sort', None)
-        sort_on = 'units'
-
-        user = request.profile
-        if username is not None:
-            User = get_user_model()
-            try:
-                user = User.objects.get(username=username)
-            except User.DoesNotExist:
-                pass
-
-        if unit_filter:
-            match_queryset = units_queryset.none()
-
-            if unit_filter == 'all':
-                match_queryset = units_queryset
-            elif unit_filter == 'translated':
-                match_queryset = units_queryset.filter(state=TRANSLATED)
-            elif unit_filter == 'untranslated':
-                match_queryset = units_queryset.filter(state=UNTRANSLATED)
-            elif unit_filter == 'fuzzy':
-                match_queryset = units_queryset.filter(state=FUZZY)
-            elif unit_filter == 'incomplete':
-                match_queryset = units_queryset.filter(
-                    Q(state=UNTRANSLATED) | Q(state=FUZZY),
-                )
-            elif unit_filter == 'suggestions':
-                match_queryset = units_queryset.filter(
-                        suggestion__state=SuggestionStates.PENDING
-                    ).distinct()
-            elif unit_filter in ('my-suggestions', 'user-suggestions'):
-                match_queryset = units_queryset.filter(
-                        suggestion__state=SuggestionStates.PENDING,
-                        suggestion__user=user,
-                    ).distinct()
-                sort_on = 'suggestions'
-            elif unit_filter == 'user-suggestions-accepted':
-                match_queryset = units_queryset.filter(
-                        suggestion__state=SuggestionStates.ACCEPTED,
-                        suggestion__user=user,
-                    ).distinct()
-            elif unit_filter == 'user-suggestions-rejected':
-                match_queryset = units_queryset.filter(
-                        suggestion__state=SuggestionStates.REJECTED,
-                        suggestion__user=user,
-                    ).distinct()
-            elif unit_filter in ('my-submissions', 'user-submissions'):
-                match_queryset = units_queryset.filter(
-                        submission__submitter=user,
-                        submission__type__in=SubmissionTypes.EDIT_TYPES,
-                    ).distinct()
-                sort_on = 'submissions'
-            elif (unit_filter in ('my-submissions-overwritten',
-                                  'user-submissions-overwritten')):
-                match_queryset = units_queryset.filter(
-                        submission__submitter=user,
-                        submission__type__in=SubmissionTypes.EDIT_TYPES,
-                    ).exclude(submitted_by=user).distinct()
-            elif unit_filter == 'checks':
-                if 'checks' in request.GET:
-                    checks = request.GET['checks'].split(',')
-
-                    if checks:
-                        match_queryset = units_queryset.filter(
-                            qualitycheck__false_positive=False,
-                            qualitycheck__name__in=checks,
-                        ).distinct()
-                elif 'category' in request.GET:
-                    category_name = request.GET['category']
-                    try:
-                        category = get_category_id(category_name)
-                    except KeyError:
-                        raise Http404
-
-                    match_queryset = units_queryset.filter(
-                        qualitycheck__false_positive=False,
-                        qualitycheck__category=category,
-                    ).distinct()
-
-            if modified_since is not None:
-                datetime_obj = parse_datetime(modified_since)
-                if datetime_obj is not None:
-                    match_queryset = match_queryset.filter(
-                        submitted_on__gt=datetime_obj,
-                    ).distinct()
-
-            if month is not None:
-                [start, end] = get_date_interval(month)
-                match_queryset = match_queryset.filter(
-                    submitted_on__gte=start,
-                    submitted_on__lte=end,
-                ).distinct()
-
-            sort_by = ALLOWED_SORTS[sort_on].get(sort_by_param, None)
-            if sort_by is not None:
-                if sort_on in SIMPLY_SORTED:
-                    if sort_by == 'priority':
-                        # TODO: Replace the following extra() with Coalesce
-                        # https://docs.djangoproject.com/en/1.8/ref/models/database-functions/#coalesce
-                        # once we drop support for Django<1.8.x:
-                        # .annotate(
-                        #     sort_by_field=Coalesce(
-                        #         Max("vfolders__priority"),
-                        #         Value(1)
-                        #     )
-                        # ).order_by("-sort_by_field")
-                        match_queryset = match_queryset.extra(select={'sort_by_field': """
-                            SELECT COALESCE(MAX(virtualfolder_virtualfolder.priority), 1)
-                            FROM virtualfolder_virtualfolder
-                            INNER JOIN virtualfolder_virtualfolder_units
-                            ON virtualfolder_virtualfolder.id = virtualfolder_virtualfolder_units.virtualfolder_id
-                            WHERE virtualfolder_virtualfolder_units.unit_id = pootle_store_unit.id
-                        """}).extra(order_by=['-sort_by_field'])
-                    else:
-                        match_queryset = match_queryset.order_by(sort_by)
-                else:
-                    # Omit leading `-` sign
-                    if sort_by[0] == '-':
-                        max_field = sort_by[1:]
-                        sort_order = '-sort_by_field'
-                    else:
-                        max_field = sort_by
-                        sort_order = 'sort_by_field'
-
-                    # It's necessary to use `Max()` here because we can't
-                    # use `distinct()` and `order_by()` at the same time
-                    # (unless PostreSQL is used and `distinct(field_name)`)
-                    match_queryset = match_queryset \
-                        .annotate(sort_by_field=Max(max_field)) \
-                        .order_by(sort_order)
-
-            units_queryset = match_queryset
-
-    if 'search' in request.GET and 'sfields' in request.GET:
-        # Accept `sfields` to be a comma-separated string of fields (#46)
-        GET = request.GET.copy()
-        sfields = GET['sfields']
-        if isinstance(sfields, unicode) and u',' in sfields:
-            GET.setlist('sfields', sfields.split(u','))
-
-        # use the search form for validation only
-        search_form = make_search_form(GET)
-
-        if search_form.is_valid():
-            units_queryset = get_search_step_query(search_form, units_queryset)
-
-    return units_queryset
-
-
 #
 # Views used with XMLHttpRequest requests.
 #
@@ -363,7 +135,7 @@ def _filter_ctx_units(units_qs, unit, how_many, gap=0):
         result['before'] = _build_units_list(before, reverse=True)
         result['before'].reverse()
 
-    #FIXME: can we avoid this query if length is known?
+    # FIXME: can we avoid this query if length is known?
     if how_many:
         after = units_qs.filter(store=unit.store_id,
                                 index__gt=unit.index)[gap:how_many+gap]
@@ -380,38 +152,6 @@ def _prepare_unit(unit):
         'isfuzzy': unit.isfuzzy(),
         'source': [source[1] for source in pluralize_source(unit)],
         'target': [target[1] for target in pluralize_target(unit)],
-    }
-
-
-def _path_units_with_meta(path, units):
-    """Constructs a dictionary which contains a list of `units`
-    corresponding to `path` as well as its metadata.
-    """
-    meta = None
-    units_list = []
-
-    for unit in iter(units):
-        if meta is None:
-            # XXX: Watch out for the query count
-            store = unit.store
-            tp = store.translation_project
-            project = tp.project
-            meta = {
-                'source_lang': project.source_language.code,
-                'source_dir': project.source_language.direction,
-                'target_lang': tp.language.code,
-                'target_dir': tp.language.direction,
-                'project_code': project.code,
-                'project_style': project.checkstyle,
-            }
-
-        units_list.append(_prepare_unit(unit))
-
-    return {
-        path: {
-            'meta': meta,
-            'units': units_list,
-        },
     }
 
 
@@ -439,14 +179,10 @@ def _get_critical_checks_snippet(request, unit):
     :return: rendered HTML snippet with the failing checks, or `None` if
         there are no critical failing checks.
     """
-    has_critical_checks = unit.qualitycheck_set.filter(
-        category=Category.CRITICAL,
-    ).exists()
-
-    if not has_critical_checks:
+    if not unit.has_critical_checks():
         return None
 
-    can_review = check_user_permission(request.profile, 'review',
+    can_review = check_user_permission(request.user, 'review',
                                        unit.store.parent)
     ctx = {
         'canreview': can_review,
@@ -469,99 +205,25 @@ def get_units(request):
         When the `initial` GET parameter is present, a sorted list of
         the result set ids will be returned too.
     """
-    pootle_path = request.GET.get('path', None)
-    if pootle_path is None:
-        raise Http400(_('Arguments missing.'))
+    search_form = UnitSearchForm(request.GET, user=request.user)
 
-    User = get_user_model()
-    request.profile = User.get(request.user)
-    limit = request.profile.get_unit_rows()
-    vfolder = None
+    if not search_form.is_valid():
+        errors = search_form.errors.as_data()
+        if "path" in errors:
+            for error in errors["path"]:
+                if error.code == "max_length":
+                    raise Http400(_('Path too long.'))
+                elif error.code == "required":
+                    raise Http400(_('Arguments missing.'))
+        raise Http404(forms.ValidationError(search_form.errors).messages)
 
-    if 'virtualfolder' in settings.INSTALLED_APPS:
-        from virtualfolder.helpers import extract_vfolder_from_path
-
-        vfolder, pootle_path = extract_vfolder_from_path(pootle_path)
-
-    units_qs = Unit.objects.get_for_path(pootle_path, request.profile)
-
-    if vfolder is not None:
-        units_qs = units_qs.filter(vfolders=vfolder)
-
-    units_qs = units_qs.select_related(
-        'store__translation_project__project',
-        'store__translation_project__language',
-    )
-    step_queryset = get_step_query(request, units_qs)
-
-    is_initial_request = request.GET.get('initial', False)
-    chunk_size = request.GET.get('count', limit)
-    uids_param = filter(None, request.GET.get('uids', '').split(u','))
-    uids = filter(None, map(to_int, uids_param))
-
-    units = []
-    unit_groups = []
-    uid_list = []
-
-    if is_initial_request:
-        sort_by_field = None
-        if len(step_queryset.query.order_by) == 1:
-            sort_by_field = step_queryset.query.order_by[0]
-
-        sort_on = None
-        for key, item in ALLOWED_SORTS.items():
-            if sort_by_field in item.values():
-                sort_on = key
-                break
-
-        if sort_by_field is None or sort_on == 'units':
-            uid_list = list(step_queryset.values_list('id', flat=True))
-        else:
-            # Not using `values_list()` here because it doesn't know about all
-            # existing relations when `extra()` has been used before in the
-            # queryset. This affects annotated names such as those ending in
-            # `__max`, where Django thinks we're trying to lookup a field on a
-            # relationship field. That's why `sort_by_field` alias for `__max`
-            # is used here. This alias must be queried in
-            # `values('sort_by_field', 'id')` with `id` otherwise
-            # Django looks for `sort_by_field` field in the initial table.
-            # https://code.djangoproject.com/ticket/19434
-            uid_list = [u['id'] for u in step_queryset.values('id', 'sort_by_field')]
-
-        if len(uids) == 1:
-            try:
-                uid = uids[0]
-                index = uid_list.index(uid)
-                begin = max(index - chunk_size, 0)
-                end = min(index + chunk_size + 1, len(uid_list))
-                uids = uid_list[begin:end]
-            except ValueError:
-                raise Http404  # `uid` not found in `uid_list`
-        else:
-            count = 2 * chunk_size
-            uids = uid_list[:count]
-
-    if not units and uids:
-        units = step_queryset.filter(id__in=uids)
-
-    units_by_path = groupby(units, lambda x: x.store.pootle_path)
-    for pootle_path, units in units_by_path:
-        unit_groups.append(_path_units_with_meta(pootle_path, units))
-
-    response = {
-        'unitGroups': unit_groups,
-    }
-    if uid_list:
-        response['uIds'] = uid_list
-
-    return JsonResponse(response)
-
-
-def _is_filtered(request):
-    """Checks if unit list is filtered."""
-    return ('filter' in request.GET or 'checks' in request.GET or
-            'user' in request.GET or
-            ('search' in request.GET and 'sfields' in request.GET))
+    total, start, end, units_qs = get_search_backend()(
+        request.user, **search_form.cleaned_data).search()
+    return JsonResponse(
+        {'start': start,
+         'end': end,
+         'total': total,
+         'unitGroups': GroupedResults(units_qs).data})
 
 
 @ajax_required
@@ -599,7 +261,7 @@ def timeline(request, unit):
         field=SubmissionFields.COMMENT,
         creation_time=unit.commented_on
     ).order_by("id")
-    timeline = timeline.select_related("submitter__user",
+    timeline = timeline.select_related("submitter",
                                        "translation_project__language")
 
     User = get_user_model()
@@ -637,18 +299,17 @@ def timeline(request, unit):
             elif item.suggestion:
                 entry.update({
                     'suggestion_text': item.suggestion.target,
-                    'suggestion_description': mark_safe(item.get_suggestion_description()),
+                    'suggestion_description':
+                        mark_safe(item.get_suggestion_description()),
                 })
             elif item.quality_check:
                 check_name = item.quality_check.name
                 entry.update({
                     'check_name': check_name,
                     'check_display_name': check_names[check_name],
-                    'checks_url': reverse('pootle-checks-descriptions'),
-                    'action': {
-                                SubmissionTypes.MUTE_CHECK: 'Muted',
-                                SubmissionTypes.UNMUTE_CHECK: 'Unmuted'
-                              }.get(item.type, '')
+                    'checks_url': u''.join([
+                        reverse('pootle-checks-descriptions'), '#', check_name,
+                    ]),
                 })
             else:
                 entry['new_value'] = to_python(item.new_value)
@@ -722,7 +383,7 @@ def save_comment(request, unit):
              An error message is returned otherwise.
     """
     # Update current unit instance's attributes
-    unit.commented_by = request.profile
+    unit.commented_by = request.user
     unit.commented_on = timezone.now().replace(microsecond=0)
 
     language = request.translation_project.language
@@ -738,7 +399,8 @@ def save_comment(request, unit):
         ctx = {
             'unit': unit,
             'language': language,
-            'cantranslate': check_user_permission(user, 'translate', directory),
+            'cantranslate': check_user_permission(user, 'translate',
+                                                  directory),
             'cansuggest': check_user_permission(user, 'suggest', directory),
         }
         t = loader.get_template('editor/units/xhr_comment.html')
@@ -749,106 +411,126 @@ def save_comment(request, unit):
     return JsonResponseBadRequest({'msg': _("Comment submission failed.")})
 
 
-@never_cache
-@ajax_required
-@get_unit_context('view')
-def get_edit_unit(request, unit):
-    """Given a store path ``pootle_path`` and unit id ``uid``, gathers all the
-    necessary information to build the editing widget.
+class UnitEditJSON(PootleJSON):
 
-    :return: A templatised editing widget is returned within the ``editor``
-             variable and paging information is also returned if the page
-             number has changed.
-    """
-    json = {}
+    model = Unit
+    pk_url_kwarg = "uid"
 
-    translation_project = request.translation_project
-    language = translation_project.language
+    @cached_property
+    def permission_context(self):
+        self.object = self.get_object()
+        tp_prefix = "parent__" * (self.pootle_path.count("/") - 3)
+        return Directory.objects.select_related(
+            "%stranslationproject__project"
+            % tp_prefix).get(pk=self.store.parent_id)
 
-    if unit.hasplural():
-        snplurals = len(unit.source.strings)
-    else:
+    @property
+    def pootle_path(self):
+        return self.store.pootle_path
+
+    @cached_property
+    def tp(self):
+        return self.store.translation_project
+
+    @cached_property
+    def store(self):
+        return self.object.store
+
+    @cached_property
+    def source_language(self):
+        return self.project.source_language
+
+    @cached_property
+    def directory(self):
+        return self.store.parent
+
+    def get_edit_template(self):
+        if self.project.is_terminology or self.store.is_terminology:
+            return loader.get_template('editor/units/term_edit.html')
+        return loader.get_template('editor/units/edit.html')
+
+    def render_edit_template(self, context):
+        return self.get_edit_template().render(
+            RequestContext(self.request, context))
+
+    def get_unit_edit_form(self):
         snplurals = None
+        if self.object.hasplural():
+            snplurals = len(self.object.source.strings)
+        form_class = unit_form_factory(self.language, snplurals, self.request)
+        return form_class(instance=self.object, request=self.request)
 
-    form_class = unit_form_factory(language, snplurals, request)
-    form = form_class(instance=unit, request=request)
-    comment_form_class = unit_comment_form_factory(language)
-    comment_form = comment_form_class({}, instance=unit, request=request)
+    def get_unit_comment_form(self):
+        comment_form_class = unit_comment_form_factory(self.language)
+        return comment_form_class({}, instance=self.object, request=self.request)
 
-    store = unit.store
-    directory = store.parent
-    user = request.profile
-    alt_src_langs = get_alt_src_langs(request, user, translation_project)
-    project = translation_project.project
+    @lru_cache()
+    def get_alt_srcs(self):
+        return find_altsrcs(
+            self.object,
+            get_alt_src_langs(self.request, self.request.user, self.tp),
+            store=self.store,
+            project=self.project)
 
-    priority = None
+    @lru_cache()
+    def get_object(self):
+        return super(UnitEditJSON, self).get_object()
 
-    if 'virtualfolder' in settings.INSTALLED_APPS:
-        vfolder_pk = request.GET.get('vfolder', '')
+    def get_queryset(self):
+        return Unit.objects.get_translatable(self.request.user).select_related(
+            "store",
+            "store__parent",
+            "store__translation_project",
+            "store__translation_project__project",
+            "store__translation_project__project__source_language",
+            "store__translation_project__language")
 
-        if vfolder_pk:
-            from virtualfolder.models import VirtualFolder
+    def get_sources(self):
+        sources = {
+            unit.store.translation_project.language.code: unit.target_f.strings
+            for unit in self.get_alt_srcs()}
+        sources[self.source_language.code] = self.object.source_f.strings
+        return sources
 
-            try:
-                # If we are translating a virtual folder, then display its
-                # priority.
-                # Note that the passed virtual folder pk might be invalid.
-                priority = VirtualFolder.objects.get(pk=vfolder_pk).priority
-            except VirtualFolder.DoesNotExist:
-                pass
+    def get_context_data(self, *args, **kwargs):
+        priority = (
+            self.object.priority if 'virtualfolder' in settings.INSTALLED_APPS
+            else None
+        )
+        return {
+            'unit': self.object,
+            'form': self.get_unit_edit_form(),
+            'comment_form': self.get_unit_comment_form(),
+            'priority': priority,
+            'store': self.store,
+            'directory': self.directory,
+            'user': self.request.user,
+            'project': self.project,
+            'language': self.language,
+            'source_language': self.source_language,
+            'cantranslate': check_user_permission(self.request.user,
+                                                  "translate",
+                                                  self.directory),
+            'cantranslatexlang': check_user_permission(self.request.user,
+                                                       "administrate",
+                                                       self.project.directory),
+            'cansuggest': check_user_permission(self.request.user,
+                                                "suggest",
+                                                self.directory),
+            'canreview': check_user_permission(self.request.user,
+                                               "review",
+                                               self.directory),
+            'is_admin': check_user_permission(self.request.user,
+                                              'administrate',
+                                              self.directory),
+            'altsrcs': self.get_alt_srcs()}
 
-        if priority is None:
-            # Retrieve the unit top priority, if any. This can happen if we are
-            # not in a virtual folder or if the passed virtual folder pk is
-            # invalid.
-            priority = unit.vfolders.aggregate(
-                priority=Max('priority')
-            )['priority']
-
-    template_vars = {
-        'unit': unit,
-        'form': form,
-        'comment_form': comment_form,
-        'priority': priority,
-        'store': store,
-        'directory': directory,
-        'profile': user,
-        'user': request.user,
-        'project': project,
-        'language': language,
-        'source_language': translation_project.project.source_language,
-        'cantranslate': check_user_permission(user, "translate", directory),
-        'cansuggest': check_user_permission(user, "suggest", directory),
-        'canreview': check_user_permission(user, "review", directory),
-        'is_admin': check_user_permission(user, 'administrate', directory),
-        'altsrcs': find_altsrcs(unit, alt_src_langs, store=store,
-                                project=project),
-    }
-
-    if translation_project.project.is_terminology or store.is_terminology:
-        t = loader.get_template('editor/units/term_edit.html')
-    else:
-        t = loader.get_template('editor/units/edit.html')
-    c = RequestContext(request, template_vars)
-    json['editor'] = t.render(c)
-    json['tm_suggestions'] = unit.get_tm_suggestions()
-    json['is_obsolete'] = unit.isobsolete()
-
-    # Return context rows if filtering is applied but
-    # don't return any if the user has asked not to have it
-    current_filter = request.GET.get('filter', 'all')
-    show_ctx = request.COOKIES.get('ctxShow', 'true')
-
-    if ((_is_filtered(request) or current_filter not in ('all',)) and
-        show_ctx == 'true'):
-        # TODO: review if this first 'if' branch makes sense
-        if translation_project.project.is_terminology or store.is_terminology:
-            json['ctx'] = _filter_ctx_units(store.units, unit, 0)
-        else:
-            ctx_qty = int(request.COOKIES.get('ctxQty', 1))
-            json['ctx'] = _filter_ctx_units(store.units, unit, ctx_qty)
-
-    return JsonResponse(json)
+    def get_response_data(self, context):
+        return {
+            'editor': self.render_edit_template(context),
+            'tm_suggestions': self.object.get_tm_suggestions(),
+            'is_obsolete': self.object.isobsolete(),
+            'sources': self.get_sources()}
 
 
 @get_unit_context('view')
@@ -912,17 +594,17 @@ def submit(request, unit):
         if form.updated_fields:
             for field, old_value, new_value in form.updated_fields:
                 sub = Submission(
-                        creation_time=current_time,
-                        translation_project=translation_project,
-                        submitter=request.profile,
-                        unit=unit,
-                        store=unit.store,
-                        field=field,
-                        type=SubmissionTypes.NORMAL,
-                        old_value=old_value,
-                        new_value=new_value,
-                        similarity=form.cleaned_data['similarity'],
-                        mt_similarity=form.cleaned_data['mt_similarity'],
+                    creation_time=current_time,
+                    translation_project=translation_project,
+                    submitter=request.user,
+                    unit=unit,
+                    store=unit.store,
+                    field=field,
+                    type=SubmissionTypes.NORMAL,
+                    old_value=old_value,
+                    new_value=new_value,
+                    similarity=form.cleaned_data['similarity'],
+                    mt_similarity=form.cleaned_data['mt_similarity'],
                 )
                 sub.save()
 
@@ -930,18 +612,18 @@ def submit(request, unit):
             # important to set these attributes after saving Submission
             # because we need to access the unit's state before it was saved
             if SubmissionFields.TARGET in (f[0] for f in form.updated_fields):
-                form.instance.submitted_by = request.profile
+                form.instance.submitted_by = request.user
                 form.instance.submitted_on = current_time
                 form.instance.reviewed_by = None
                 form.instance.reviewed_on = None
 
-            form.instance._log_user = request.profile
+            form.instance._log_user = request.user
 
             form.save()
 
             json['checks'] = _get_critical_checks_snippet(request, unit)
 
-        json['user_score'] = request.profile.public_score
+        json['user_score'] = request.user.public_score
 
         return JsonResponse(json)
 
@@ -972,17 +654,17 @@ def suggest(request, unit):
     if form.is_valid():
         if form.instance._target_updated:
             # TODO: Review if this hackish method is still necessary
-            #HACKISH: django 1.2 stupidly modifies instance on
-            # model form validation, reload unit from db
+            # HACKISH: django 1.2 stupidly modifies instance on model form
+            # validation, reload unit from db
             unit = Unit.objects.get(id=unit.id)
             unit.add_suggestion(
                 form.cleaned_data['target_f'],
-                user=request.profile,
+                user=request.user,
                 similarity=form.cleaned_data['similarity'],
                 mt_similarity=form.cleaned_data['mt_similarity'],
             )
 
-            json['user_score'] = request.profile.public_score
+            json['user_score'] = request.user.public_score
 
         return JsonResponse(json)
 
@@ -1018,10 +700,9 @@ def reject_suggestion(request, unit, suggid):
         (request.user.is_anonymous() or request.user != sugg.user)):
         raise PermissionDenied(_('Insufficient rights to access review mode.'))
 
-    unit.reject_suggestion(sugg, request.translation_project,
-                           request.profile)
+    unit.reject_suggestion(sugg, request.translation_project, request.user)
 
-    json['user_score'] = request.profile.public_score
+    json['user_score'] = request.user.public_score
 
     return JsonResponse(json)
 
@@ -1038,17 +719,16 @@ def accept_suggestion(request, unit, suggid):
     except ObjectDoesNotExist:
         raise Http404
 
-    unit.accept_suggestion(suggestion, request.translation_project,
-                           request.profile)
+    unit.accept_suggestion(suggestion, request.translation_project, request.user)
 
-    json['user_score'] = request.profile.public_score
+    json['user_score'] = request.user.public_score
     json['newtargets'] = [highlight_whitespace(target)
                           for target in unit.target.strings]
     json['newdiffs'] = {}
     for sugg in unit.get_suggestions():
-        json['newdiffs'][sugg.id] = \
-                [highlight_diffs(unit.target.strings[i], target)
-                 for i, target in enumerate(sugg.target.strings)]
+        json['newdiffs'][sugg.id] = [highlight_diffs(unit.target.strings[i],
+                                                     target) for i, target in
+                                     enumerate(sugg.target.strings)]
 
     json['checks'] = _get_critical_checks_snippet(request, unit)
 
@@ -1058,15 +738,10 @@ def accept_suggestion(request, unit, suggid):
 @ajax_required
 @get_unit_context('review')
 def toggle_qualitycheck(request, unit, check_id):
-    json = {
-        'udbid': unit.id,
-        'checkid': check_id,
-    }
-
     try:
-        unit.toggle_qualitycheck(check_id,
-            bool(request.POST.get('mute')), request.profile)
+        unit.toggle_qualitycheck(check_id, bool(request.POST.get('mute')),
+                                 request.user)
     except ObjectDoesNotExist:
         raise Http404
 
-    return JsonResponse(json)
+    return JsonResponse({})

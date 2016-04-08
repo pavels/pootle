@@ -6,24 +6,22 @@
  * AUTHORS file for copyright and authorship information.
  */
 
-'use strict';
-
 import React from 'react';
-import { PureRenderMixin } from 'react/addons';
+import { PureRenderMixin } from 'react-addons-pure-render-mixin';
 
 
-let SocialSignInForm = React.createClass({
-  mixins: [PureRenderMixin],
+const SocialSignInForm = React.createClass({
 
   propTypes: {
     socialAuthProviders: React.PropTypes.array.isRequired,
   },
 
+  mixins: [PureRenderMixin],
 
   /* Handlers */
 
   handleClick(url) {
-    let nextURL = window.location.pathname + window.location.hash;
+    const nextURL = window.location.pathname + window.location.hash;
     window.location = `${url}?next=${encodeURIComponent(nextURL)}`;
   },
 
@@ -35,7 +33,7 @@ let SocialSignInForm = React.createClass({
       <button
         className="btn btn-big"
         key={index}
-        onClick={this.handleClick.bind(null, socialAuth.url)}
+        onClick={() => this.handleClick(socialAuth.url)}
       >
         {interpolate(gettext('Sign In With %s'), [socialAuth.name])}
       </button>
@@ -43,7 +41,10 @@ let SocialSignInForm = React.createClass({
   },
 
   render() {
-    let signInWarningMsg = gettext('Signing in with an external service for the first time will automatically create an account for you.');
+    const signInWarningMsg = gettext(
+      'Signing in with an external service for the first time will ' +
+      'automatically create an account for you.'
+    );
 
     return (
       <div className="actions sign-in-social">

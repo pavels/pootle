@@ -46,18 +46,18 @@ Setting up the virtual environment
 
 In order to install Pootle first create a virtual environment. The virtual
 environment allows you to install dependencies independent of your system
-packages. 
+packages.
 
 Please install ``virtualenv`` from your system packages, e.g. on Debian:
 
-.. code-block:: bash
+.. code-block:: console
 
   $ sudo apt-get install python-virtualenv
 
 
 Otherwise you can install ``virtualenv`` using :command:`pip`:
 
-.. code-block:: bash
+.. code-block:: console
 
   $ sudo pip install virtualenv
 
@@ -65,7 +65,7 @@ Otherwise you can install ``virtualenv`` using :command:`pip`:
 Now create a virtual environment on your location of choice by issuing the
 ``virtualenv`` command:
 
-.. code-block:: bash
+.. code-block:: console
 
   $ cd ~/dev/pootle
   $ virtualenv env
@@ -73,7 +73,7 @@ Now create a virtual environment on your location of choice by issuing the
 
 To activate the virtual environment run the :command:`activate` script:
 
-.. code-block:: bash
+.. code-block:: console
 
   $ source env/bin/activate
 
@@ -82,7 +82,7 @@ Once activated the virtual environment name will be prepended to the shell promp
 Lastly, we want to make sure that we are using the latest version of
 :command:`pip`:
 
-.. code-block:: bash
+.. code-block:: console
 
    (env) $ pip install --upgrade pip
 
@@ -94,7 +94,7 @@ Installing Pootle
 
 Use :command:`pip` to install Pootle into the virtual environment:
 
-.. code-block:: bash
+.. code-block:: console
 
   (env) $ pip install Pootle
 
@@ -104,10 +104,10 @@ This will also fetch and install Pootle's dependencies.
 To verify that everything installed correctly, you should be able to access the
 :command:`pootle` command line tool within your environment.
 
-.. code-block:: bash
+.. code-block:: console
 
   (env) $ pootle --version
-  Pootle 2.7.1 (Django 1.7.10, Translate Toolkit 1.13.0)
+  Pootle 2.7.3 (Django 1.8.8, Translate Toolkit 1.13.0)
 
 
 .. _installation#initializing-the-configuration:
@@ -118,7 +118,7 @@ Initializing the Configuration
 Once Pootle has been installed, you will need to initialize a configuration
 file:
 
-.. code-block:: bash
+.. code-block:: console
 
   (env) $ pootle init
 
@@ -148,7 +148,7 @@ If you have not already done so you should
 
 You can start the worker in the background with the following command:
 
-.. code-block:: bash
+.. code-block:: console
 
    (env) $ pootle rqworker &
 
@@ -167,29 +167,17 @@ Before you run Pootle for the first time, you need to create the schema for
 the database and populate it with initial data. This is done by executing the
 :djadmin:`migrate` and :djadmin:`initdb` management commands:
 
-.. code-block:: bash
+.. note:: You will need to have an :ref:`RQ worker running
+   <installation#running-rqworker>` to complete this. Alternately, you can
+   use the :option:`--no-rq`.
+
+.. code-block:: console
 
   (env) $ pootle migrate
   (env) $ pootle initdb
 
-
-.. _installation#refreshing-stats:
-
-Refreshing stats
-----------------
-
-On first installation you will need to generate the statistics from your
-database. You will need to have an :ref:`RQ worker running 
-<installation#running-rqworker>` to complete this.
-
-.. code-block:: bash
-
-   (env) $ pootle refresh_stats
-
-This command will dispatch jobs to the RQ worker and may take some time.
-
-If you wish to run :djadmin:`refresh_stats` in the foreground without using the RQ
-worker you can use the :option:`--no-rq` option.
+Running :djadmin:`initdb` will take some time as it will create the default
+projects and stores.
 
 
 .. _installation#admin-user:
@@ -200,7 +188,7 @@ Creating an admin user
 Pootle needs at least one user with superuser rights which we create with the
 :djadmin:`createsuperuser` command.
 
-.. code-block:: bash
+.. code-block:: console
 
   (env) $ pootle createsuperuser
 
@@ -211,7 +199,7 @@ bypass this step you can use the :djadmin:`verify_user` command.
 For example to allow a user named ``admin`` to log in without having to verify
 their email address:
 
-.. code-block:: bash
+.. code-block:: console
 
   (env) $ pootle verify_user admin
 
@@ -221,16 +209,20 @@ their email address:
 Running Pootle
 --------------
 
-By default Pootle provides a built-in `CherryPy server
-<http://www.cherrypy.org/>`_ that will be enough for quickly testing the
-software. To run it, just issue:
+The Django default server will be enough for quickly testing the software. To
+run it, just issue:
 
-.. code-block:: bash
+.. code-block:: console
 
-   (env) $ pootle start
+   (env) $ pootle runserver --insecure
 
-And the server will start listening on port 8000. This can be accessed from
-your web browser at `localhost:8000 <http://localhost:8000/>`_.
+
+.. warning:: There are :ref:`serious drawbacks <django:staticfiles-runserver>`
+   to using :command:`runserver`. Never use it in production.
+
+
+And the server will start listening on port 8000. Pootle can then be accessed
+from your web browser at `localhost:8000 <http://localhost:8000/>`_.
 
 
 .. _installation#next-steps:
@@ -241,6 +233,7 @@ Next steps
 Now that you have Pootle up and running you may want to consider some of the
 following in order to build a production environment.
 
+- :doc:`Create your first localisation project <project_setup>`
 - :ref:`Run Pootle and RQ workers as services <pootle#running_as_a_service>`
 - :ref:`Set up a reverse-proxy web server for static files <apache#reverse_proxy>`
 - :ref:`Use a wsgi server to serve dynamic content <apache#mod_wsgi>`

@@ -14,10 +14,11 @@ import pytest
 from django import forms
 from django.http import Http404
 
+from pytest_pootle.factories import UserFactory
+from pytest_pootle.utils import create_api_request
+
 from pootle.core.views import APIView
 from accounts.models import User
-
-from ..factories import UserFactory
 
 
 class UserAPIView(APIView):
@@ -36,7 +37,7 @@ class UserSettingsForm(forms.ModelForm):
 
     password = forms.CharField(required=False)
 
-    class Meta:
+    class Meta(object):
         model = User
         fields = ('username', 'password', 'full_name')
         widgets = {
@@ -52,42 +53,30 @@ class WriteableUserSettingsAPIView(APIView):
     edit_form_class = UserSettingsForm
 
 
-def _create_api_request(rf, method='get', url='/', data=''):
-    """Convenience function to create and setup fake POST requests."""
-    if data:
-        data = json.dumps(data)
-
-    request_method = getattr(rf, method)
-    request = request_method(url, data=data, content_type='application/json')
-    request.META['HTTP_X_REQUESTED_WITH'] = 'XMLHttpRequest'
-
-    return request
-
-
 def test_apiview_invalid_method(rf):
     """Tests for invalid methods."""
     view = UserAPIView.as_view()
 
     # Forbidden method
-    request = _create_api_request(rf, 'post')
+    request = create_api_request(rf, 'post')
     response = view(request)
 
     # "Method not allowed" if the method is not within the restricted list
     assert response.status_code == 405
 
     # Non-existent method
-    request = _create_api_request(rf, 'patch')
+    request = create_api_request(rf, 'patch')
     response = view(request)
     assert response.status_code == 405
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 def test_apiview_get_single(rf):
     """Tests retrieving a single object using the API."""
     view = UserAPIView.as_view()
     user = UserFactory.create(username='foo')
 
-    request = _create_api_request(rf)
+    request = create_api_request(rf)
     response = view(request, id=user.id)
 
     # This should have been a valid request...
@@ -101,16 +90,16 @@ def test_apiview_get_single(rf):
 
     # Non-existent IDs should return 404
     with pytest.raises(Http404):
-        view(request, id='7')
+        view(request, id='777')
 
 
-@pytest.mark.django_db(transaction=True)
-def test_apiview_get_multiple(rf):
+@pytest.mark.django_db
+def test_apiview_get_multiple(rf, no_extra_users):
     """Tests retrieving multiple objects using the API."""
     view = UserAPIView.as_view()
     UserFactory.create(username='foo')
 
-    request = _create_api_request(rf)
+    request = create_api_request(rf)
 
     response = view(request)
     response_data = json.loads(response.content)
@@ -120,7 +109,7 @@ def test_apiview_get_multiple(rf):
     assert isinstance(response_data, dict)
     assert 'count' in response_data
     assert 'models' in response_data
-    assert len(response_data['models']) == 1
+    assert len(response_data['models']) == User.objects.count()
 
     # Let's add more users
     UserFactory.create_batch(5)
@@ -132,7 +121,7 @@ def test_apiview_get_multiple(rf):
     assert isinstance(response_data, dict)
     assert 'count' in response_data
     assert 'models' in response_data
-    assert len(response_data['models']) == 6
+    assert len(response_data['models']) == User.objects.count()
 
     # Let's add even more users to test pagination
     UserFactory.create_batch(5)
@@ -147,7 +136,7 @@ def test_apiview_get_multiple(rf):
     assert 'models' in response_data
     assert len(response_data['models']) == 10
 
-    request = _create_api_request(rf, url='/?p=2')
+    request = create_api_request(rf, url='/?p=2')
     response = view(request)
     response_data = json.loads(response.content)
 
@@ -156,16 +145,16 @@ def test_apiview_get_multiple(rf):
     assert isinstance(response_data, dict)
     assert 'count' in response_data
     assert 'models' in response_data
-    assert len(response_data['models']) == 1
+    assert len(response_data['models']) == User.objects.count() - 10
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 def test_apiview_post(rf):
     """Tests creating a new object using the API."""
     view = WriteableUserAPIView.as_view()
 
     # Malformed request, only JSON-encoded data is understood
-    request = _create_api_request(rf, 'post')
+    request = create_api_request(rf, 'post')
     response = view(request)
     response_data = json.loads(response.content)
 
@@ -177,7 +166,7 @@ def test_apiview_post(rf):
     missing_data = {
         'not_a_field': 'not a value',
     }
-    request = _create_api_request(rf, 'post', data=missing_data)
+    request = create_api_request(rf, 'post', data=missing_data)
     response = view(request)
     response_data = json.loads(response.content)
 
@@ -189,7 +178,7 @@ def test_apiview_post(rf):
         'username': 'foo',
         'email': 'foo@bar.tld',
     }
-    request = _create_api_request(rf, 'post', data=data)
+    request = create_api_request(rf, 'post', data=data)
     response = view(request)
     response_data = json.loads(response.content)
 
@@ -207,14 +196,14 @@ def test_apiview_post(rf):
     assert 'errors' in response_data
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 def test_apiview_put(rf):
     """Tests updating an object using the API."""
     view = WriteableUserAPIView.as_view()
     user = UserFactory.create(username='foo')
 
     # Malformed request, only JSON-encoded data is understood
-    request = _create_api_request(rf, 'put')
+    request = create_api_request(rf, 'put')
     response = view(request, id=user.id)
     response_data = json.loads(response.content)
 
@@ -226,7 +215,7 @@ def test_apiview_put(rf):
     update_data = {
         'username': new_username,
     }
-    request = _create_api_request(rf, 'put', data=update_data)
+    request = create_api_request(rf, 'put', data=update_data)
 
     # Requesting unknown resources is a 404
     with pytest.raises(Http404):
@@ -243,7 +232,7 @@ def test_apiview_put(rf):
     update_data.update({
         'email': user.email,
     })
-    request = _create_api_request(rf, 'put', data=update_data)
+    request = create_api_request(rf, 'put', data=update_data)
 
     response = view(request, id=user.id)
     response_data = json.loads(response.content)
@@ -259,7 +248,7 @@ def test_apiview_put(rf):
         'password': 'd34db33f',
     })
     view = WriteableUserSettingsAPIView.as_view()
-    request = _create_api_request(rf, 'put', data=update_data)
+    request = create_api_request(rf, 'put', data=update_data)
 
     response = view(request, id=user.id)
     response_data = json.loads(response.content)
@@ -267,15 +256,15 @@ def test_apiview_put(rf):
     assert 'password' not in response_data
 
 
-@pytest.mark.django_db(transaction=True)
-def test_apiview_delete(rf, trans_nobody):
+@pytest.mark.django_db
+def test_apiview_delete(rf):
     """Tests deleting an object using the API."""
     view = UserAPIView.as_view()
 
     user = UserFactory.create(username='foo')
 
     # Delete is not supported for collections
-    request = _create_api_request(rf, 'delete')
+    request = create_api_request(rf, 'delete')
     response = view(request)
 
     assert response.status_code == 405
@@ -292,11 +281,11 @@ def test_apiview_delete(rf, trans_nobody):
         view(request, id=user.id)
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 def test_apiview_search(rf):
     """Tests filtering through a search query."""
-    # Note that `UserAPIView` is configured to search in all defined
-    # fields, which are `username` and `full_name`
+    # Note that `UserAPIView` is configured to search in all defined fields,
+    # which are `username` and `full_name`
     view = UserAPIView.as_view()
 
     # Let's create some users to search for
@@ -305,7 +294,7 @@ def test_apiview_search(rf):
     UserFactory.create(username='foobarbaz', full_name='Foo Bar')
 
     # `q=bar` should match 3 users (full names match)
-    request = _create_api_request(rf, url='/?q=bar')
+    request = create_api_request(rf, url='/?q=bar')
     response = view(request)
     response_data = json.loads(response.content)
 
@@ -313,7 +302,7 @@ def test_apiview_search(rf):
     assert len(response_data['models']) == 3
 
     # `q=baz` should match 1 user
-    request = _create_api_request(rf, url='/?q=baz')
+    request = create_api_request(rf, url='/?q=baz')
     response = view(request)
     response_data = json.loads(response.content)
 
@@ -321,7 +310,7 @@ def test_apiview_search(rf):
     assert len(response_data['models']) == 1
 
     # Searches are case insensitive; `q=BaZ` should match 1 user
-    request = _create_api_request(rf, url='/?q=BaZ')
+    request = create_api_request(rf, url='/?q=BaZ')
     response = view(request)
     response_data = json.loads(response.content)
 

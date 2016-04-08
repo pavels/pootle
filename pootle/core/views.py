@@ -7,23 +7,95 @@
 # or later license. See the LICENSE file for a copy of the license and the
 # AUTHORS file for copyright and authorship information.
 
+import functools
+from itertools import groupby
 import json
 import operator
 
-from django.contrib.auth.decorators import login_required
+from django.forms import ValidationError
+from django.conf import settings
+from django.contrib.auth import get_user_model
+from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.exceptions import PermissionDenied
+from django.core.urlresolvers import reverse
 from django.db.models import ObjectDoesNotExist, ProtectedError, Q
 from django.forms.models import modelform_factory
 from django.http import Http404, HttpResponse
 from django.utils.decorators import method_decorator
+from django.utils.functional import cached_property
 from django.utils.translation import ugettext as _
+from django.views.decorators.cache import never_cache
 from django.views.defaults import (permission_denied as django_403,
                                    page_not_found as django_404,
                                    server_error as django_500)
-from django.views.generic import View
+from django.views.generic import View, DetailView
 
+from pootle_app.models.permissions import (
+    check_permission, get_matching_permissions)
+from pootle_misc.stats import get_translation_states
+from pootle_misc.checks import get_qualitycheck_schema
+from pootle_misc.forms import make_search_form
+from pootle_misc.util import ajax_required
+from pootle_store.forms import UnitExportForm
+from pootle_store.util import get_search_backend
+
+from .browser import get_table_headings
+from .helpers import (SIDEBAR_COOKIE_NAME,
+                      get_filter_name, get_sidebar_announcements_context)
 from .http import JsonResponse, JsonResponseBadRequest
-from .utils.json import PootleJSONEncoder
+from .url_helpers import get_path_parts, get_previous_url
+from .utils.json import PootleJSONEncoder, jsonify
+
+
+def check_directory_permission(permission_codename, request, directory):
+    """Checks if the current user has `permission_codename`
+    permissions for a given directory.
+    """
+    if request.user.is_superuser:
+        return True
+
+    if permission_codename == 'view':
+        context = None
+
+        context = getattr(directory, "translation_project", None)
+        if context is None:
+            context = getattr(directory, "project", None)
+
+        if context is None:
+            return True
+
+        return context.is_accessible_by(request.user)
+
+    return (
+        "administrate" in request.permissions
+        or permission_codename in request.permissions)
+
+
+def set_permissions(f):
+
+    @functools.wraps(f)
+    def method_wrapper(self, request, *args, **kwargs):
+        request.permissions = get_matching_permissions(
+            request.user,
+            self.permission_context) or []
+        return f(self, request, *args, **kwargs)
+    return method_wrapper
+
+
+def requires_permission(permission):
+
+    def class_wrapper(f):
+
+        @functools.wraps(f)
+        def method_wrapper(self, request, *args, **kwargs):
+            directory_permission = check_directory_permission(
+                permission, request, self.permission_context)
+            if not directory_permission:
+                raise PermissionDenied(
+                    _("Insufficient rights to access this page."), )
+            return f(self, request, *args, **kwargs)
+        return method_wrapper
+    return class_wrapper
 
 
 class SuperuserRequiredMixin(object):
@@ -34,15 +106,25 @@ class SuperuserRequiredMixin(object):
             msg = _('You do not have rights to administer Pootle.')
             raise PermissionDenied(msg)
 
-        return super(SuperuserRequiredMixin, self) \
-                .dispatch(request, *args, **kwargs)
+        return super(SuperuserRequiredMixin, self).dispatch(request, *args,
+                                                            **kwargs)
 
 
 class LoginRequiredMixin(object):
     """Require a logged-in user."""
+
     @method_decorator(login_required)
     def dispatch(self, *args, **kwargs):
         return super(LoginRequiredMixin, self).dispatch(*args, **kwargs)
+
+
+class UserObjectMixin(object):
+    """Generic field definitions to be reused across user views."""
+
+    model = get_user_model()
+    context_object_name = 'object'
+    slug_field = 'username'
+    slug_url_kwarg = 'username'
 
 
 class TestUserFieldMixin(LoginRequiredMixin):
@@ -54,13 +136,15 @@ class TestUserFieldMixin(LoginRequiredMixin):
 
     Note that there's free way for admins.
     """
+
     test_user_field = 'username'
 
     def dispatch(self, *args, **kwargs):
         user = self.request.user
         url_field_value = kwargs[self.test_user_field]
         field_value = getattr(user, self.test_user_field, '')
-        can_access = user.is_superuser or unicode(field_value) == url_field_value
+        can_access = user.is_superuser or \
+            unicode(field_value) == url_field_value
 
         if not can_access:
             raise PermissionDenied(_('You cannot access this page.'))
@@ -70,6 +154,7 @@ class TestUserFieldMixin(LoginRequiredMixin):
 
 class NoDefaultUserMixin(object):
     """Removes the `default` special user from views."""
+
     def dispatch(self, request, *args, **kwargs):
         username = kwargs.get('username', None)
         if username is not None and username == 'default':
@@ -84,6 +169,7 @@ class AjaxResponseMixin(object):
 
     This needs to be used with a `FormView`.
     """
+
     def form_invalid(self, form):
         super(AjaxResponseMixin, self).form_invalid(form)
         return JsonResponseBadRequest({'errors': form.errors})
@@ -98,11 +184,12 @@ class APIView(View):
 
     Based on djangbone https://github.com/af/djangbone
     """
+
     # Model on which this view operates. Setting this is required
     model = None
 
-    # Base queryset for accessing data. If `None`, model's default manager
-    # will be used
+    # Base queryset for accessing data. If `None`, model's default manager will
+    # be used
     base_queryset = None
 
     # Set this to restrict the view to a subset of the available methods
@@ -111,13 +198,13 @@ class APIView(View):
     # Field names to be included
     fields = ()
 
-    # Individual forms to use for each method. By default it'll
-    # auto-populate model forms built using `self.model` and `self.fields`
+    # Individual forms to use for each method. By default it'll auto-populate
+    # model forms built using `self.model` and `self.fields`
     add_form_class = None
     edit_form_class = None
 
-    # Tuple of sensitive field names that will be excluded from any
-    # serialized responses
+    # Tuple of sensitive field names that will be excluded from any serialized
+    # responses
     sensitive_field_names = ('password', 'pw')
 
     # Set to an integer to enable GET pagination
@@ -226,9 +313,8 @@ class APIView(View):
 
         if form.is_valid():
             new_object = form.save()
-            # Serialize the new object to json using our built-in methods.
-            # The extra DB read here is not ideal, but it keeps the code
-            # DRY:
+            # Serialize the new object to json using our built-in methods. The
+            # extra DB read here is not ideal, but it keeps the code DRY:
             wrapper_qs = self.base_queryset.filter(pk=new_object.pk)
             return self.json_response(
                 self.serialize_qs(wrapper_qs, single_object=True)
@@ -354,3 +440,285 @@ def page_not_found(request):
 
 def server_error(request):
     return django_500(request, template_name='errors/500.html')
+
+
+class PootleAdminView(DetailView):
+
+    @method_decorator(user_passes_test(lambda u: u.is_superuser))
+    def dispatch(self, request, *args, **kwargs):
+        return super(
+            PootleAdminView, self).dispatch(request, *args, **kwargs)
+
+    def post(self, *args, **kwargs):
+        return self.get(*args, **kwargs)
+
+
+class PootleDetailView(DetailView):
+    translate_url_path = ""
+    browse_url_path = ""
+    export_url_path = ""
+    resource_path = ""
+
+    @property
+    def browse_url(self):
+        return reverse(
+            self.browse_url_path,
+            kwargs=self.url_kwargs)
+
+    @property
+    def export_url(self):
+        return reverse(
+            self.export_url_path,
+            kwargs=self.url_kwargs)
+
+    @cached_property
+    def is_admin(self):
+        return check_permission('administrate', self.request)
+
+    @property
+    def language(self):
+        if self.tp:
+            return self.tp.language
+
+    @property
+    def permission_context(self):
+        return self.get_object()
+
+    @property
+    def pootle_path(self):
+        return self.object.pootle_path
+
+    @property
+    def project(self):
+        if self.tp:
+            return self.tp.project
+
+    @property
+    def tp(self):
+        return None
+
+    @property
+    def translate_url(self):
+        return reverse(
+            self.translate_url_path,
+            kwargs=self.url_kwargs)
+
+    @set_permissions
+    @requires_permission("view")
+    def dispatch(self, request, *args, **kwargs):
+        # get funky with the request 8/
+        return super(PootleDetailView, self).dispatch(request, *args, **kwargs)
+
+    def get_context_data(self, *args, **kwargs):
+        return {
+            'object': self.object,
+            'pootle_path': self.pootle_path,
+            'project': self.project,
+            'language': self.language,
+            'translation_project': self.tp,
+            'is_admin': self.is_admin,
+            'resource_path': self.resource_path,
+            'resource_path_parts': get_path_parts(self.resource_path),
+            'translate_url': self.translate_url,
+            'export_url': self.export_url,
+            'browse_url': self.browse_url}
+
+
+class PootleJSON(PootleDetailView):
+
+    response_class = JsonResponse
+
+    @never_cache
+    @method_decorator(ajax_required)
+    @set_permissions
+    @requires_permission("view")
+    def dispatch(self, request, *args, **kwargs):
+        return super(PootleDetailView, self).dispatch(request, *args, **kwargs)
+
+    def get_response_data(self, context):
+        """Override this method if you need to render a template with the context object
+        but wish to include the rendered output within a JSON response
+        """
+        return context
+
+    def render_to_response(self, context, **response_kwargs):
+        """Overriden to call `get_response_data` with output from
+        `get_context_data`
+        """
+        response_kwargs.setdefault('content_type', self.content_type)
+        return self.response_class(
+            self.get_response_data(context),
+            **response_kwargs)
+
+
+class PootleBrowseView(PootleDetailView):
+    template_name = 'browser/index.html'
+    table_id = None
+    table_fields = None
+    items = None
+    is_store = False
+
+    @property
+    def path(self):
+        return self.request.path
+
+    @property
+    def stats(self):
+        return self.object.get_stats()
+
+    @property
+    def has_vfolders(self):
+        return False
+
+    @cached_property
+    def cookie_data(self):
+        ctx, cookie_data = self.sidebar_announcements
+        return cookie_data
+
+    @property
+    def sidebar_announcements(self):
+        return get_sidebar_announcements_context(
+            self.request,
+            (self.object, ))
+
+    @property
+    def table(self):
+        if self.table_id and self.table_fields and self.items:
+            return {
+                'id': self.table_id,
+                'fields': self.table_fields,
+                'headings': get_table_headings(self.table_fields),
+                'items': self.items}
+
+    def get(self, *args, **kwargs):
+        response = super(PootleBrowseView, self).get(*args, **kwargs)
+        if self.cookie_data:
+            response.set_cookie(
+                SIDEBAR_COOKIE_NAME, self.cookie_data)
+        return response
+
+    def get_context_data(self, *args, **kwargs):
+        filters = {}
+        can_translate = False
+        can_translate_stats = False
+        if self.has_vfolders:
+            filters['sort'] = 'priority'
+
+        if self.request.user.is_superuser or self.language:
+            can_translate = True
+            can_translate_stats = True
+            url_action_continue = self.object.get_translate_url(
+                state='incomplete',
+                **filters)
+            url_action_fixcritical = self.object.get_critical_url(
+                **filters)
+            url_action_review = self.object.get_translate_url(
+                state='suggestions',
+                **filters)
+            url_action_view_all = self.object.get_translate_url(state='all')
+        else:
+            if self.project:
+                can_translate = True
+            url_action_continue = None
+            url_action_fixcritical = None
+            url_action_review = None
+            url_action_view_all = None
+        ctx, cookie_data = self.sidebar_announcements
+        ctx.update(
+            super(PootleBrowseView, self).get_context_data(*args, **kwargs))
+        ctx.update(
+            {'page': 'browse',
+             'stats': jsonify(self.stats),
+             'translation_states': get_translation_states(self.object),
+             'check_categories': get_qualitycheck_schema(self.object),
+             'can_translate': can_translate,
+             'can_translate_stats': can_translate_stats,
+             'url_action_continue': url_action_continue,
+             'url_action_fixcritical': url_action_fixcritical,
+             'url_action_review': url_action_review,
+             'url_action_view_all': url_action_view_all,
+             'table': self.table,
+             'is_store': self.is_store,
+             'browser_extends': self.template_extends})
+        return ctx
+
+
+class PootleTranslateView(PootleDetailView):
+    template_name = "editor/main.html"
+
+    @property
+    def ctx_path(self):
+        return self.pootle_path
+
+    @property
+    def vfolder_pk(self):
+        return ""
+
+    @property
+    def display_vfolder_priority(self):
+        return False
+
+    def get_context_data(self, *args, **kwargs):
+        ctx = super(
+            PootleTranslateView, self).get_context_data(*args, **kwargs)
+        ctx.update(
+            {'page': 'translate',
+             'current_vfolder_pk': self.vfolder_pk,
+             'ctx_path': self.ctx_path,
+             'display_priority': self.display_vfolder_priority,
+             'check_categories': get_qualitycheck_schema(),
+             'cantranslate': check_permission("translate", self.request),
+             'cansuggest': check_permission("suggest", self.request),
+             'canreview': check_permission("review", self.request),
+             'search_form': make_search_form(request=self.request),
+             'previous_url': get_previous_url(self.request),
+             'POOTLE_MT_BACKENDS': settings.POOTLE_MT_BACKENDS,
+             'AMAGAMA_URL': settings.AMAGAMA_URL,
+             'editor_extends': self.template_extends})
+        return ctx
+
+
+class PootleExportView(PootleDetailView):
+    template_name = 'editor/export_view.html'
+
+    @property
+    def path(self):
+        return self.request.path.replace("export-view/", "")
+
+    def get_context_data(self, *args, **kwargs):
+        ctx = {}
+        filter_name, filter_extra = get_filter_name(self.request.GET)
+
+        form_data = self.request.GET.copy()
+        form_data["path"] = self.path
+
+        search_form = UnitExportForm(
+            form_data, user=self.request.user)
+
+        if not search_form.is_valid():
+            raise Http404(
+                ValidationError(search_form.errors).messages)
+
+        total, start, end, units_qs = get_search_backend()(
+            self.request.user, **search_form.cleaned_data).search()
+
+        units_qs = units_qs.select_related('store')
+
+        if total > search_form.cleaned_data["count"]:
+            ctx.update(
+                {'unit_total_count': total,
+                 'displayed_unit_count': search_form.cleaned_data["count"]})
+
+        unit_groups = [
+            (path, list(units))
+            for path, units
+            in groupby(units_qs, lambda x: x.store.pootle_path)]
+
+        ctx.update(
+            {'unit_groups': unit_groups,
+             'filter_name': filter_name,
+             'filter_extra': filter_extra,
+             'source_language': self.source_language,
+             'language': self.language,
+             'project': self.project})
+        return ctx

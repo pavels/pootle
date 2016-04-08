@@ -8,14 +8,14 @@
 # AUTHORS file for copyright and authorship information.
 
 import pytest
-
 from translate.storage import factory
 
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 
 from pootle.core.mixins.treeitem import CachedMethods
-from pootle_store.util import UNTRANSLATED, FUZZY, TRANSLATED
+from pootle_store.util import FUZZY, TRANSLATED, UNTRANSLATED
+from pootle_store.models import Unit
 
 
 User = get_user_model()
@@ -59,8 +59,7 @@ def test_convert(af_tutorial_po):
     """Tests that in-DB and on-disk units match after format conversion."""
     for db_unit in af_tutorial_po.units.iterator():
         if db_unit.hasplural() and not db_unit.istranslated():
-            # Skip untranslated plural units, they will always look
-            # different
+            # Skip untranslated plural units, they will always look different
             continue
 
         store_unit = db_unit.getorig()
@@ -96,15 +95,18 @@ def test_empty_plural_target(af_tutorial_po):
 @pytest.mark.django_db
 def test_update_plural_target(af_tutorial_po):
     """Tests plural translations are stored and sync'ed."""
-    db_unit = _update_translation(af_tutorial_po, 2,
-                                 {'target': [u'samaka', u'samak']})
+    db_unit = _update_translation(
+        af_tutorial_po, 2,
+        {'target': [u'samaka', u'samak']})
     store_unit = db_unit.getorig()
 
     assert db_unit.target.strings == [u'samaka', u'samak']
     assert db_unit.target.strings == store_unit.target.strings
 
     po_file = factory.getobject(af_tutorial_po.file.path)
-    assert db_unit.target.strings == po_file.units[db_unit.index].target.strings
+    assert (
+        db_unit.target.strings
+        == po_file.units[db_unit.index].target.strings)
 
     assert db_unit.target == u'samaka'
     assert db_unit.target == store_unit.target
@@ -114,15 +116,18 @@ def test_update_plural_target(af_tutorial_po):
 @pytest.mark.django_db
 def test_update_plural_target_dict(af_tutorial_po):
     """Tests plural translations are stored and sync'ed (dict version)."""
-    db_unit = _update_translation(af_tutorial_po, 2,
-                                 {'target': {0: u'samaka', 1: u'samak'}})
+    db_unit = _update_translation(
+        af_tutorial_po, 2,
+        {'target': {0: u'samaka', 1: u'samak'}})
     store_unit = db_unit.getorig()
 
     assert db_unit.target.strings == [u'samaka', u'samak']
     assert db_unit.target.strings == store_unit.target.strings
 
     po_file = factory.getobject(af_tutorial_po.file.path)
-    assert db_unit.target.strings == po_file.units[db_unit.index].target.strings
+    assert (
+        db_unit.target.strings
+        == po_file.units[db_unit.index].target.strings)
 
     assert db_unit.target == u'samaka'
     assert db_unit.target == store_unit.target
@@ -132,8 +137,9 @@ def test_update_plural_target_dict(af_tutorial_po):
 @pytest.mark.django_db
 def test_update_fuzzy(af_tutorial_po):
     """Tests fuzzy state changes are stored and sync'ed."""
-    db_unit = _update_translation(af_tutorial_po, 0,
-                                 {'target': u'samaka', 'fuzzy': True})
+    db_unit = _update_translation(
+        af_tutorial_po, 0,
+        {'target': u'samaka', 'fuzzy': True})
     store_unit = db_unit.getorig()
 
     assert db_unit.isfuzzy()
@@ -155,17 +161,20 @@ def test_update_fuzzy(af_tutorial_po):
 @pytest.mark.django_db
 def test_update_comment(af_tutorial_po):
     """Tests translator comments are stored and sync'ed."""
-    db_unit = _update_translation(af_tutorial_po, 0,
-                                 {'translator_comment': u'7amada'})
+    db_unit = _update_translation(
+        af_tutorial_po, 0,
+        {'translator_comment': u'7amada'})
     store_unit = db_unit.getorig()
 
     assert db_unit.getnotes(origin='translator') == u'7amada'
-    assert db_unit.getnotes(origin='translator') == \
-            store_unit.getnotes(origin='translator')
+    assert (
+        db_unit.getnotes(origin='translator')
+        == store_unit.getnotes(origin='translator'))
 
     po_file = factory.getobject(af_tutorial_po.file.path)
-    assert db_unit.getnotes(origin='translator') == \
-            po_file.units[db_unit.index].getnotes(origin='translator')
+    assert (
+        db_unit.getnotes(origin='translator')
+        == po_file.units[db_unit.index].getnotes(origin='translator'))
 
 
 @pytest.mark.django_db
@@ -243,6 +252,7 @@ def test_accept_suggestion_changes_state(issue_2401_po, system):
     unit.accept_suggestion(suggestion, tp, system)
     assert unit.state == TRANSLATED
 
+
 @pytest.mark.django_db
 def test_accept_suggestion_update_wordcount(it_tutorial_po, system):
     """Tests that accepting a suggestion for an untranslated unit will
@@ -250,7 +260,7 @@ def test_accept_suggestion_update_wordcount(it_tutorial_po, system):
     """
 
     # Parse store
-    it_tutorial_po.update(overwrite=False, only_newer=False)
+    it_tutorial_po.update(it_tutorial_po.file.store)
 
     untranslated_unit = it_tutorial_po.getitem(0)
     suggestion_text = 'foo bar baz'
@@ -260,10 +270,21 @@ def test_accept_suggestion_update_wordcount(it_tutorial_po, system):
     assert added
     assert len(untranslated_unit.get_suggestions()) == 1
     assert it_tutorial_po.get_cached(CachedMethods.SUGGESTIONS) == 1
-    assert it_tutorial_po.get_cached(CachedMethods.WORDCOUNT_STATS)['translated'] == 1
+    assert (
+        it_tutorial_po.get_cached(CachedMethods.WORDCOUNT_STATS)['translated']
+        == 1)
     assert untranslated_unit.state == UNTRANSLATED
     untranslated_unit.accept_suggestion(sugg,
                                         it_tutorial_po.translation_project,
                                         system)
     assert untranslated_unit.state == TRANSLATED
-    assert it_tutorial_po.get_cached(CachedMethods.WORDCOUNT_STATS)['translated'] == 2
+    assert (
+        it_tutorial_po.get_cached(CachedMethods.WORDCOUNT_STATS)['translated']
+        == 2)
+
+
+@pytest.mark.django_db
+def test_unit_repr():
+    unit = Unit.objects.first()
+    assert str(unit) == str(unit.convert(unit.get_unit_class()))
+    assert unicode(unit) == unicode(unit.source)

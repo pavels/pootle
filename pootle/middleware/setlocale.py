@@ -19,16 +19,16 @@ class SetLocale(object):
     """Sets python locale for each request."""
 
     def process_request(self, request):
-        # Under Windows, locale names are different, setlocale()
-        # with regular locale names will fail and
-        # locale.setlocale(locale.LC_ALL, '') will produce side effect
-        # seems like the safest option is just not set any locale at all
+        # Under Windows, locale names are different, setlocale() with regular
+        # locale names will fail and locale.setlocale(locale.LC_ALL, '') will
+        # produce side effect seems like the safest option is just not set any
+        # locale at all
         if os.name == 'nt':
             return
 
-        #FIXME: some languages like arabic don't have a language only
-        # locale for no good reason. we need a function to pick default
-        # locale for these
+        # FIXME: some languages like arabic don't have a language only locale
+        # for no good reason. we need a function to pick default locale for
+        # these
         lang = translation.to_locale(translation.get_language())
         try:
             if lang == 'tr' or lang.startswith('tr_'):
@@ -51,8 +51,8 @@ class SetLocale(object):
 def set_pootle_locale_from_settings():
     """Try to set Pootle locale based on the language specified in settings."""
 
-    # See above for the reasoning why we need to skip
-    # setting locale under Windows
+    # See above for the reasoning why we need to skip setting locale under
+    # Windows
     if os.name == 'nt':
         return
 

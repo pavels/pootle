@@ -7,94 +7,96 @@
 # or later license. See the LICENSE file for a copy of the license and the
 # AUTHORS file for copyright and authorship information.
 
-from django.shortcuts import render
+from django.core.urlresolvers import reverse
+from django.http import Http404
+from django.shortcuts import redirect, render
+from django.utils.functional import cached_property
+from django.utils.lru_cache import lru_cache
 
-from pootle.core.browser import (make_project_item,
-                                 get_table_headings)
+from pootle.core.browser import make_project_item
 from pootle.core.decorators import get_path_obj, permission_required
-from pootle.core.helpers import (get_export_view_context,
-                                 get_browser_context,
-                                 get_translation_context)
-from pootle.core.utils.json import jsonify
+from pootle.core.views import (
+    PootleBrowseView, PootleTranslateView, PootleExportView)
 from pootle.i18n.gettext import tr_lang
 from pootle_app.views.admin.permissions import admin_permissions
 
-
-@get_path_obj
-@permission_required('view')
-def browse(request, language):
-    user_tps = language.get_children_for_user(request.user)
-    items = (make_project_item(tp) for tp in user_tps)
-
-    table_fields = ['name', 'progress', 'total', 'need-translation',
-                    'suggestions', 'critical', 'last-updated', 'activity']
-
-    ctx = get_browser_context(request)
-    ctx.update({
-        'language': {
-          'code': language.code,
-          'name': tr_lang(language.fullname),
-        },
-        'table': {
-            'id': 'language',
-            'fields': table_fields,
-            'headings': get_table_headings(table_fields),
-            'items': items,
-        },
-        'stats': jsonify(request.resource_obj.get_stats_for_user(request.user)),
-
-        'browser_extends': 'languages/base.html',
-    })
-
-    response = render(request, 'browser/index.html', ctx)
-    response.set_cookie('pootle-language', language.code)
-
-    return response
+from .forms import LanguageSpecialCharsForm
+from .models import Language
 
 
-@get_path_obj
-@permission_required('view')
-def translate(request, language):
-    request.pootle_path = language.pootle_path
-    request.ctx_path = language.pootle_path
+class LanguageMixin(object):
+    model = Language
+    browse_url_path = "pootle-language-browse"
+    export_url_path = "pootle-language-export"
+    translate_url_path = "pootle-language-translate"
+    template_extends = 'languages/base.html'
 
-    request.store = None
-    request.directory = language.directory
+    @property
+    def language(self):
+        return self.object
 
-    project = None
+    @property
+    def permission_context(self):
+        return self.get_object().directory
 
-    context = get_translation_context(request)
-    context.update({
-        'language': language,
-        'project': project,
+    @property
+    def url_kwargs(self):
+        return {"language_code": self.object.code}
 
-        'editor_extends': 'languages/base.html',
-    })
+    @lru_cache()
+    def get_object(self):
+        lang = Language.get_canonical(self.kwargs["language_code"])
+        if lang is None:
+            raise Http404
+        return lang
 
-    return render(request, "editor/main.html", context)
+    def get(self, *args, **kwargs):
+        self.object = self.get_object()
+        if self.object.code != kwargs["language_code"]:
+            return redirect(
+                self.url_pattern_name,
+                self.object.code,
+                permanent=True)
+        return super(LanguageMixin, self).get(*args, **kwargs)
 
 
-@get_path_obj
-@permission_required('view')
-def export_view(request, language):
-    """Displays a list of units with filters applied."""
-    request.pootle_path = language.pootle_path
-    request.ctx_path = language.pootle_path
-    request.resource_path = ''
+class LanguageBrowseView(LanguageMixin, PootleBrowseView):
+    url_pattern_name = "pootle-language-browse"
+    table_id = "language"
+    table_fields = [
+        'name', 'progress', 'total', 'need-translation',
+        'suggestions', 'critical', 'last-updated', 'activity']
 
-    request.store = None
-    request.directory = language.directory
+    @property
+    def stats(self):
+        return self.object.get_stats_for_user(self.request.user)
 
-    project = None
+    @cached_property
+    def items(self):
+        return [
+            make_project_item(tp)
+            for tp in self.object.get_children_for_user(self.request.user)
+        ]
 
-    ctx = get_export_view_context(request)
-    ctx.update({
-        'source_language': 'en',
-        'language': language,
-        'project': project,
-    })
+    @property
+    def language(self):
+        return {
+            'code': self.object.code,
+            'name': tr_lang(self.object.fullname)}
 
-    return render(request, "editor/export_view.html", ctx)
+    def get(self, *args, **kwargs):
+        response = super(LanguageBrowseView, self).get(*args, **kwargs)
+        response.set_cookie('pootle-language', self.object.code)
+        return response
+
+
+class LanguageTranslateView(LanguageMixin, PootleTranslateView):
+    url_pattern_name = "pootle-language-translate"
+
+
+class LanguageExportView(LanguageMixin, PootleExportView):
+    url_pattern_name = "pootle-language-export"
+    source_language = "en"
 
 
 @get_path_obj
@@ -103,8 +105,44 @@ def language_admin(request, language):
     ctx = {
         'page': 'admin-permissions',
 
+        'browse_url': reverse('pootle-language-browse', kwargs={
+            'language_code': language.code,
+        }),
+        'translate_url': reverse('pootle-language-translate', kwargs={
+            'language_code': language.code,
+        }),
+
         'language': language,
         'directory': language.directory,
     }
     return admin_permissions(request, language.directory,
                              'languages/admin/permissions.html', ctx)
+
+
+@get_path_obj
+@permission_required('administrate')
+def language_characters_admin(request, language):
+    form = LanguageSpecialCharsForm(request.POST
+                                    if request.method == 'POST'
+                                    else None,
+                                    instance=language)
+    if form.is_valid():
+        form.save()
+        return redirect('pootle-language-browse', language.code)
+
+    ctx = {
+        'page': 'admin-characters',
+
+        'browse_url': reverse('pootle-language-browse', kwargs={
+            'language_code': language.code,
+        }),
+        'translate_url': reverse('pootle-language-translate', kwargs={
+            'language_code': language.code,
+        }),
+
+        'language': language,
+        'directory': language.directory,
+        'form': form,
+    }
+
+    return render(request, 'languages/admin/characters.html', ctx)

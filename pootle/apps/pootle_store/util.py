@@ -8,11 +8,11 @@
 # AUTHORS file for copyright and authorship information.
 
 import os
+from importlib import import_module
 
 from django.conf import settings
 from django.utils.translation import ugettext_lazy as _
 
-from pootle_misc.aggregate import sum_column
 
 # Unit States
 #: Unit is no longer part of the store
@@ -32,6 +32,13 @@ STATES_MAP = {
     TRANSLATED: _("Translated"),
 }
 
+STATES_NAMES = {
+    OBSOLETE: "obsolete",
+    UNTRANSLATED: "untranslated",
+    FUZZY: "fuzzy",
+    TRANSLATED: "translated"}
+
+
 def add_trailing_slash(path):
     """If path does not end with /, add it and return."""
 
@@ -43,7 +50,8 @@ def add_trailing_slash(path):
 
 def relative_real_path(p):
     if p.startswith(settings.POOTLE_TRANSLATION_DIRECTORY):
-        return p[len(add_trailing_slash(settings.POOTLE_TRANSLATION_DIRECTORY)):]
+        return p[len(add_trailing_slash(
+            settings.POOTLE_TRANSLATION_DIRECTORY)):]
     else:
         return p
 
@@ -55,35 +63,6 @@ def absolute_real_path(p):
         return p
 
 
-def calc_total_wordcount(units):
-    total = sum_column(units,
-                       ['source_wordcount'], count=False)
-
-    return total['source_wordcount'] or 0
-
-
-def calc_untranslated_wordcount(units):
-    untranslated = sum_column(units.filter(state=UNTRANSLATED),
-                              ['source_wordcount'], count=False)
-
-    return untranslated['source_wordcount'] or 0
-
-
-def calc_fuzzy_wordcount(units):
-    fuzzy = sum_column(units.filter(state=FUZZY),
-                       ['source_wordcount'], count=False)
-
-    return fuzzy['source_wordcount'] or 0
-
-
-def calc_translated_wordcount(units):
-    translated = sum_column(units.filter(state=TRANSLATED),
-                            ['source_wordcount'],
-                            count=False)
-
-    return translated['source_wordcount'] or 0
-
-
 def find_altsrcs(unit, alt_src_langs, store=None, project=None):
     from pootle_store.models import Unit
 
@@ -91,13 +70,12 @@ def find_altsrcs(unit, alt_src_langs, store=None, project=None):
     project = project or store.translation_project.project
 
     altsrcs = Unit.objects.filter(
-                    unitid_hash=unit.unitid_hash,
-                    store__translation_project__project=project,
-                    store__translation_project__language__in=alt_src_langs,
-                    state=TRANSLATED) \
-                          .select_related(
-                                'store', 'store__translation_project',
-                                'store__translation_project__language')
+        unitid_hash=unit.unitid_hash,
+        store__translation_project__project=project,
+        store__translation_project__language__in=alt_src_langs,
+        state=TRANSLATED).select_related(
+            'store', 'store__translation_project',
+            'store__translation_project__language')
 
     if project.get_treestyle() == 'nongnu':
         altsrcs = filter(lambda x: x.store.path == store.path, altsrcs)
@@ -127,3 +105,19 @@ def parse_pootle_revision(store):
         if pootle_revision is not None:
             return int(pootle_revision)
     return None
+
+
+def get_state_name(code, default="untranslated"):
+    return STATES_NAMES.get(code, default)
+
+
+def vfolders_installed():
+    return "virtualfolder" in settings.INSTALLED_APPS
+
+
+def get_search_backend():
+    search_backend_module = import_module(
+        ".".join(settings.POOTLE_SEARCH_BACKEND.split(".")[:-1]))
+    return getattr(
+        search_backend_module,
+        settings.POOTLE_SEARCH_BACKEND.split(".")[-1])

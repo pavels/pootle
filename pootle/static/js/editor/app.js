@@ -6,52 +6,62 @@
  * AUTHORS file for copyright and authorship information.
  */
 
-var $ = require('jquery');
-var _ = require('underscore');
+import $ from 'jquery';
+import _ from 'underscore';
 
 // jQuery plugins
-require('jquery-caret');
-require('jquery-cookie');
-require('jquery-easing');
-require('jquery-highlightRegex');
-require('jquery-history');
-require('jquery-jsonp');
-require('jquery-serializeObject');
-require('jquery-utils');
+import 'jquery-caret';
+import 'jquery-easing';
+import 'jquery-highlightRegex';
+import 'jquery-history';
+import 'jquery-serializeObject';
+import 'jquery-utils';
 
 // Other plugins
 import autosize from 'autosize';
-// XXX: this weirdness is temporarily needed because the version of
-// diff-match-patch we bundle is not CommonJS-friendly
-require('imports?this=>window!diff-match-patch');
-require('iso8601');
-require('shortcut');
-var Levenshtein = require('levenshtein');
+import cx from 'classnames';
+import Levenshtein from 'levenshtein';
+import assign from 'object-assign';
+import 'shortcut';
 
-var UnitSet = require('../collections').UnitSet;
-
-var captcha = require('../captcha.js');
-var helpers = require('../helpers.js');
-var msg = require('../msg.js');
-var score = require('../score.js');
-var search = require('../search.js');
-var utils = require('../utils.js');
-
+import StatsAPI from 'api/StatsAPI';
+import UnitAPI from 'api/UnitAPI';
+import cookie from 'utils/cookie';
+import fetch from 'utils/fetch';
 import linkHashtags from 'utils/linkHashtags';
 
+import captcha from '../captcha';
+import { UnitSet } from '../collections';
+import helpers from '../helpers';
+import msg from '../msg';
+import score from '../score';
+import search from '../search';
+import utils from '../utils';
+import {
+  decodeEntities, escapeUnsafeRegexSymbols, makeRegexForMultipleWords,
+} from './utils';
 
-var filterSelectOpts = {
-      dropdownAutoWidth: true,
-      width: 'off'
-    },
-    sortSelectOpts = _.extend({
-      minimumResultsForSearch: -1
-    }, filterSelectOpts);
+
+const CTX_STEP = 1;
+
+const ALLOWED_SORTS = ['oldest', 'newest', 'default'];
+
+
+const filterSelectOpts = {
+  dropdownAutoWidth: true,
+  width: 'off',
+};
+const sortSelectOpts = assign({
+  minimumResultsForSearch: -1,
+}, filterSelectOpts);
+
+
+const mtProviders = [];
 
 
 function _refreshChecksSnippet(newChecks) {
-  let $checks = $('.js-unit-checks');
-  let focusedArea = $('.focusthis')[0];
+  const $checks = $('.js-unit-checks');
+  const focusedArea = $('.focusthis')[0];
 
   $checks.html(newChecks).show();
   utils.blinkClass($checks, 'blink', 4, 200);
@@ -65,19 +75,38 @@ window.PTL = window.PTL || {};
 PTL.editor = {
 
   /* Initializes the editor */
-  init: function (options) {
-
+  init(options) {
     /* Default settings */
     this.settings = {
-      mt: []
+      mt: [],
+      displayPriority: false,
     };
 
-    options && $.extend(this.settings, options);
+    if (options) {
+      assign(this.settings, options);
+    }
+
+    /* Cached elements */
+    this.backToBrowserEl = document.querySelector('.js-back-to-browser');
+    this.$editorActivity = $('#js-editor-act');
+    this.$editorBody = $('.js-editor-body');
+    this.editorTableEl = document.querySelector('.js-editor-table');
+    this.$filterStatus = $('#js-filter-status');
+    this.$filterChecks = $('#js-filter-checks');
+    this.$filterChecksWrapper = $('.js-filter-checks-wrapper');
+    this.$filterSortBy = $('#js-filter-sort');
+    this.$msgOverlay = $('#js-editor-msg-overlay');
+    this.$navNext = $('#js-nav-next');
+    this.$navPrev = $('#js-nav-prev');
+    this.unitCountEl = document.querySelector('.js-unit-count');
+    this.unitIndexEl = document.querySelector('.js-unit-index');
+    this.offsetRequested = 0;
 
     /* Initialize variables */
     this.units = new UnitSet([], {
-      chunkSize: this.settings.chunkSize
+      chunkSize: this.settings.chunkSize,
     });
+    this.editorRow = null;
 
     this.filter = 'all';
     this.checks = [];
@@ -85,8 +114,7 @@ PTL.editor = {
     this.modifiedSince = null;
     this.user = null;
     this.ctxGap = 0;
-    this.ctxQty = parseInt($.cookie('ctxQty'), 10) || 1;
-    this.ctxStep= 1;
+    this.ctxQty = parseInt(cookie('ctxQty'), 10) || 1;
     this.preventNavigation = false;
 
     this.isUnitDirty = false;
@@ -94,19 +122,13 @@ PTL.editor = {
     this.isLoading = true;
     this.showActivity();
 
+    this.fetchingOffsets = [];
+
     /* Regular expressions */
     this.cpRE = /^(<[^>]+>|\[n\|t]|\W$^\n)*(\b|$)/gm;
 
-    /* Timeline requests handler */
-    this.timelineReq = null;
-
-    /* TM requests handler */
-    this.tmReq = null;
-
-    /* Differencer */
-    this.differencer = new diff_match_patch();
     /* Levenshtein word comparer */
-    this.wordComparer = new Levenshtein({compare: 'words'});
+    this.wordComparer = new Levenshtein({ compare: 'words' });
 
     /* Compile templates */
     this.tmpl = {
@@ -118,22 +140,26 @@ PTL.editor = {
 
     /* Initialize search */
     search.init({
-      onSearch: this.onSearch
+      onSearch: this.onSearch,
     });
 
+    if (options.displayPriority) {
+      ALLOWED_SORTS.push('priority');
+    }
+
     /* Select2 */
-    $('#js-filter-status').select2(filterSelectOpts);
-    $('#js-filter-sort').select2(sortSelectOpts);
+    this.$filterStatus.select2(filterSelectOpts);
+    this.$filterSortBy.select2(sortSelectOpts);
 
     /* Screenshot images */
-    $(document).on('click', '.js-dev-img', function (e) {
+    $(document).on('click', '.js-dev-img', function displayScreenshot(e) {
       e.preventDefault();
 
       $(this).magnificPopup({
         type: 'image',
         gallery: {
-          enabled: true
-        }
+          enabled: true,
+        },
       }).magnificPopup('open');
     });
 
@@ -156,12 +182,12 @@ PTL.editor = {
                    (e) => this.toggleSuggestMode(e));
 
     /* Update focus when appropriate */
-    $(document).on('focus', '.focusthis', function (e) {
+    $(document).on('focus', '.focusthis', (e) => {
       PTL.editor.focused = e.target;
     });
 
     /* General */
-    $(document).on('click', '.js-editor-reload', function (e) {
+    $(document).on('click', '.js-editor-reload', (e) => {
       e.preventDefault();
       $.history.load('');
     });
@@ -179,7 +205,7 @@ PTL.editor = {
     $(document).on('click', '.js-copyoriginal', (e) => {
       const uId = e.currentTarget.dataset.uid;
       const sources = [
-        ...document.querySelectorAll(`#js-unit-${uId} .translation-text`)
+        ...document.querySelectorAll(`#js-unit-${uId} .js-translation-text`),
       ].map((el) => el.textContent);
       this.copyOriginal(sources);
     });
@@ -187,29 +213,41 @@ PTL.editor = {
     /* Editor navigation/submission */
     $(document).on('mouseup', 'tr.view-row, tr.ctx-row', this.gotoUnit);
     $(document).on('keypress', '.js-unit-index', (e) => this.gotoIndex(e));
-    $(document).on('dblclick click', '.js-unit-index', this.unitIndex);
-    $(document).on('click', 'input.submit', this.submit);
-    $(document).on('click', 'input.suggest', this.suggest);
+    $(document).on('dblclick click', '.js-unit-index', (e) => this.unitIndex(e));
+    $(document).on('click', 'input.submit', (e) => {
+      e.preventDefault();
+      this.handleSubmit();
+    });
+    $(document).on('click', 'input.suggest', (e) => {
+      e.preventDefault();
+      this.handleSuggest();
+    });
     $(document).on('click', '#js-nav-prev', () => this.gotoPrev());
     $(document).on('click', '#js-nav-next', () => this.gotoNext());
-    $(document).on('click', '.js-suggestion-reject', this.rejectSuggestion);
-    $(document).on('click', '.js-suggestion-accept', this.acceptSuggestion);
-    $(document).on('click', '#js-toggle-timeline', this.toggleTimeline);
-    $(document).on('click', '.js-toggle-check', this.toggleCheck);
+    $(document).on('click', '.js-suggestion-reject', (e) => {
+      e.stopPropagation();
+      this.rejectSuggestion(e.currentTarget.dataset.suggId);
+    });
+    $(document).on('click', '.js-suggestion-accept', (e) => {
+      e.stopPropagation();
+      this.acceptSuggestion(e.currentTarget.dataset.suggId);
+    });
+    $(document).on('click', '#js-toggle-timeline', (e) => this.toggleTimeline(e));
+    $(document).on('click', '.js-toggle-check', (e) => {
+      this.toggleCheck(e.currentTarget.dataset.checkId);
+    });
 
     /* Filtering */
-    $(document).on('change', '#js-filter-status', this.filterStatus);
-    $(document).on('change', '#js-filter-checks', this.filterChecks);
+    $(document).on('change', '#js-filter-status', () => this.filterStatus());
+    $(document).on('change', '#js-filter-checks', () => this.filterChecks());
     $(document).on('change', '#js-filter-sort', () => this.filterSort());
-    $(document).on('click', '.js-more-ctx', function () {
-      PTL.editor.moreContext(false);
-    });
-    $(document).on('click', '.js-less-ctx', this.lessContext);
-    $(document).on('click', '.js-show-ctx', this.showContext);
-    $(document).on('click', '.js-hide-ctx', this.hideContext);
+    $(document).on('click', '.js-more-ctx', () => this.moreContext());
+    $(document).on('click', '.js-less-ctx', () => this.lessContext());
+    $(document).on('click', '.js-show-ctx', () => this.showContext());
+    $(document).on('click', '.js-hide-ctx', () => this.hideContext());
 
     /* Commenting */
-    $(document).on('click', '.js-editor-comment', function (e) {
+    $(document).on('click', '.js-editor-comment', (e) => {
       e.preventDefault();
       const $elem = $('.js-editor-comment-form');
       const $comment = $('.js-editor-comment');
@@ -221,22 +259,23 @@ PTL.editor = {
         $elem.css('display', 'none');
       }
     });
-    $(document).on('submit', '#js-comment-form', this.comment);
-    $(document).on('click', '.js-comment-remove', this.removeComment);
+    $(document).on('submit', '#js-comment-form', (e) => this.addComment(e));
+    $(document).on('click', '.js-comment-remove', (e) => this.removeComment(e));
 
     /* Misc */
-    $(document).on('click', '.js-editor-msg-hide', this.hideMsg);
+    $(document).on('click', '.js-editor-msg-hide', () => this.hideMsg());
 
-    $(document).on('click', '.js-toggle-raw', function (e) {
+    $(document).on('click', '.js-toggle-raw', (e) => {
       e.preventDefault();
       $('.js-translate-translation').toggleClass('raw');
       $('.js-toggle-raw').toggleClass('selected');
       autosize.update(document.querySelector('.js-translation-area'));
     });
 
-    /* */
+    /* Confirmation prompt */
     window.addEventListener('beforeunload', (e) => {
       if (PTL.editor.isUnitDirty) {
+        // eslint-disable-next-line no-param-reassign
         e.returnValue = gettext(
           'You have unsaved changes in this string. Navigating away will discard those changes.'
         );
@@ -244,11 +283,11 @@ PTL.editor = {
     });
 
     /* Bind hotkeys */
-    shortcut.add('ctrl+return', function () {
-      if (PTL.editor.isSuggestMode()) {
-        $('input.suggest').trigger('click');
+    shortcut.add('ctrl+return', () => {
+      if (this.isSuggestMode()) {
+        this.handleSuggest();
       } else {
-        $('input.submit').trigger('click');
+        this.handleSubmit();
       }
     });
     shortcut.add('ctrl+space', () => this.toggleState());
@@ -257,52 +296,52 @@ PTL.editor = {
     shortcut.add('ctrl+up', () => this.gotoPrev());
     shortcut.add('ctrl+,', () => this.gotoPrev());
 
-    shortcut.add('ctrl+down', () => this.gotoNext({isSubmission: false}));
-    shortcut.add('ctrl+.', () => this.gotoNext({isSubmission: false}));
+    shortcut.add('ctrl+down', () => this.gotoNext({ isSubmission: false }));
+    shortcut.add('ctrl+.', () => this.gotoNext({ isSubmission: false }));
 
     if (navigator.platform.toUpperCase().indexOf('MAC') >= 0) {
       // Optimize string join with '<br/>' as separator
-      $('#js-nav-next')
-        .attr('title',
-              gettext('Go to the next string (Ctrl+.)<br/><br/>Also:<br/>Next page: Ctrl+Shift+.<br/>Last page: Ctrl+Shift+End')
+      this.$navNext.attr('title',
+        gettext(
+          'Go to the next string (Ctrl+.)<br/><br/>Also:<br/>Next page: ' +
+          'Ctrl+Shift+.<br/>Last page: Ctrl+Shift+End'
+        )
       );
-      $('#js-nav-prev')
-        .attr('title',
-              gettext('Go to the previous string (Ctrl+,)<br/><br/>Also:</br>Previous page: Ctrl+Shift+,<br/>First page: Ctrl+Shift+Home')
+      this.$navPrev.attr('title',
+        gettext(
+          'Go to the previous string (Ctrl+,)<br/><br/>Also:</br>Previous page: ' +
+          'Ctrl+Shift+,<br/>First page: Ctrl+Shift+Home'
+        )
       );
     }
 
-    shortcut.add('ctrl+shift+n', this.unitIndex);
+    shortcut.add('ctrl+shift+n', (e) => this.unitIndex(e));
 
     /* XHR activity indicator */
-    $(document).ajaxStart(function () {
-      clearTimeout(PTL.editor.delayedActivityTimer);
-      PTL.editor.delayedActivityTimer = setTimeout(function () {
-        PTL.editor.showActivity();
+    $(document).ajaxStart(() => {
+      clearTimeout(this.delayedActivityTimer);
+      this.delayedActivityTimer = setTimeout(() => {
+        this.showActivity();
       }, 3000);
     });
-    $(document).ajaxStop(function () {
-      clearTimeout(PTL.editor.delayedActivityTimer);
-      if (!PTL.editor.isLoading) {
-        PTL.editor.hideActivity();
+    $(document).ajaxStop(() => {
+      clearTimeout(this.delayedActivityTimer);
+      if (!this.isLoading) {
+        this.hideActivity();
       }
     });
 
-    /* Load MT backends */
-    $.each(this.settings.mt, function () {
-      var backend = this.name, key = this.key;
-
-      $.ajax({
-        url: s(['js/mt/', backend, '.js'].join('')),
-        async: false,
-        dataType: 'script',
-        success: function () {
-          setTimeout(function () {
-            PTL.editor.mt[backend].init(key);
-          }, 0);
-          $(document).on('mt_ready', 'table.translate-table',
-                         PTL.editor.mt[backend].ready);
-        }
+    /* Load MT providers */
+    this.settings.mt.forEach((provider) => {
+      require.ensure([], () => {
+        // Retrieve actual module name: FOO_BAR_BAZ => FooBarBaz
+        const moduleName = provider.name.split('_').map(
+          (x) => x[0] + x.slice(1).toLowerCase()
+        ).join('');
+        // Webpack doesn't like template strings for now...
+        // eslint-disable-next-line prefer-template
+        const Module = require('./mt/providers/' + moduleName).default;
+        mtProviders.push(new Module(provider.key));
       });
     });
 
@@ -310,174 +349,189 @@ PTL.editor = {
     setInterval(helpers.updateRelativeDates, 6e4);
 
     /* History support */
-    setTimeout(function () {
-      $.history.init(function (hash) {
-        var params = utils.getParsedHash(hash),
-            isInitial = true,
-            uId = 0;
+    $.history.init((hash) => {
+      const params = utils.getParsedHash(hash);
+      let isInitial = true;
+      let uId = 0;
+      let initialOffset = 0;
 
-        // Walk through known filtering criterias and apply them to the editor object
+      // Walk through known filtering criterias and apply them to the editor object
 
-        if (params.unit) {
-          var uIdParam = parseInt(params.unit, 10);
+      if (params.unit) {
+        const uIdParam = parseInt(params.unit, 10);
 
-          if (uIdParam && !isNaN(uIdParam)) {
-            var current = PTL.editor.units.getCurrent(),
-                newUnit = PTL.editor.units.get(uIdParam);
-            if (newUnit && newUnit !== current) {
-              PTL.editor.units.setCurrent(newUnit);
-              PTL.editor.displayEditUnit();
-              return;
-            } else {
-              uId = uIdParam;
-              // Don't retrieve initial data if there are existing results
-              isInitial = !PTL.editor.units.length;
-            }
+        if (uIdParam && !isNaN(uIdParam)) {
+          const current = this.units.getCurrent();
+          const newUnit = this.units.get(uIdParam);
+
+          if (newUnit && newUnit !== current) {
+            this.setUnit(newUnit);
+            return;
           }
+
+          uId = uIdParam;
+          // Don't retrieve initial data if there are existing results
+          isInitial = !this.units.length;
+        }
+      }
+
+      if (params.offset) {
+        const offset = parseInt(params.offset, 10);
+        if (offset && !isNaN(offset)) {
+          initialOffset = this.getStartOfChunk(offset);
+        }
+      }
+
+      // Reset to defaults
+      this.filter = 'all';
+      this.checks = [];
+      this.category = [];
+      this.sortBy = 'default';
+
+      if ('filter' in params) {
+        const filterName = params.filter;
+
+        // Set current state
+        this.filter = filterName;
+
+        if (filterName === 'checks' && 'checks' in params) {
+          this.checks = params.checks.split(',');
+        }
+        if (filterName === 'checks' && 'category' in params) {
+          this.category = params.category;
+        }
+        if ('sort' in params) {
+          const { sort } = params;
+          this.sortBy = ALLOWED_SORTS.indexOf(sort) !== -1 ? sort : 'default';
+        }
+      }
+
+      if ('modified-since' in params) {
+        this.modifiedSince = params['modified-since'];
+      } else {
+        this.modifiedSince = null;
+      }
+
+      if ('month' in params) {
+        this.month = params.month;
+      } else {
+        this.month = null;
+      }
+
+      // Only accept the user parameter for 'user-*' filters
+      if ('user' in params && this.filter.indexOf('user-') === 0) {
+        this.user = encodeURIComponent(params.user);
+        const user = this.user;
+
+        const values = {
+          'user-suggestions':
+            // Translators: '%s' is a username
+            interpolate(gettext("%s's pending suggestions"), [user]),
+          'user-suggestions-accepted':
+            // Translators: '%s' is a username
+            interpolate(gettext("%s's accepted suggestions"), [user]),
+          'user-suggestions-rejected':
+            // Translators: '%s' is a username
+            interpolate(gettext("%s's rejected suggestions"), [user]),
+          'user-submissions':
+            // Translators: '%s' is a username
+            interpolate(gettext("%s's submissions"), [user]),
+          'user-submissions-overwritten':
+            // Translators: '%s' is a username, meaning "submissions by %s,
+            // that were overwritten"
+            interpolate(gettext("%s's overwritten submissions"), [user]),
+        };
+        const newOpts = [];
+        for (const key in values) {
+          if (!values.hasOwnProperty(key)) {
+            continue;
+          }
+
+          newOpts.push(`
+            <option value="${key}" data-user="${user}" class="js-user-filter">
+              ${values[key]}
+            </option>
+          `);
+        }
+        $('.js-user-filter').remove();
+        this.$filterStatus.append(newOpts.join(''));
+      }
+
+      if ('search' in params) {
+        // Note that currently the search, if provided along with the other
+        // filters, would override them
+        this.filter = 'search';
+
+        const newState = {
+          searchText: params.search,
+        };
+
+        if ('sfields' in params) {
+          newState.searchFields = params.sfields.split(',');
+        }
+        if ('soptions' in params) {
+          newState.searchOptions = params.soptions.split(',');
         }
 
-        // Reset to defaults
-        PTL.editor.filter = 'all';
-        PTL.editor.checks = [];
-        PTL.editor.category = [];
-        PTL.editor.sortBy = 'default';
+        search.setState(newState);
+      }
 
-        if ('filter' in params) {
-          var filterName = params.filter;
+      // Update the filter UI to match the current filter
 
-          // Set current state
-          PTL.editor.filter = filterName;
+      // disable navigation on UI toolbar events to prevent data reload
+      this.preventNavigation = true;
 
-          if (filterName === 'checks' && 'checks' in params) {
-            PTL.editor.checks = params.checks.split(',');
-          }
-          if (filterName === 'checks' && 'category' in params) {
-            PTL.editor.category = params.category;
-          }
-          if ('sort' in params) {
-            PTL.editor.sortBy = params.sort;
+      const filterValue = this.filter === 'search' ? 'all' : this.filter;
+      this.$filterStatus.select2('val', filterValue);
+
+      if (this.filter === 'checks') {
+        // if the checks selector is empty (i.e. the 'change' event was not fired
+        // because the selection did not change), force the update to populate the selector
+        if (this.$filterChecks.is(':hidden')) {
+          this.getCheckOptions();
+        }
+      }
+
+      this.$filterSortBy.select2('val', this.sortBy);
+
+      if (this.filter === 'search') {
+        this.$filterChecksWrapper.hide();
+      }
+
+      // re-enable normal event handling
+      this.preventNavigation = false;
+
+      this.fetchUnits({
+        uId,
+        initialOffset,
+        initial: isInitial,
+      }).then((hasResults) => {
+        if (!hasResults) {
+          return;
+        }
+        if (this.units.uIds.indexOf(uId) === -1) {
+          if (this.offsetRequested > this.initialOffset &&
+              this.offsetRequested <= this.getOffsetOfLastUnit()) {
+            uId = this.units.uIds[this.offsetRequested - this.initialOffset - 1];
+          } else {
+            uId = this.units.uIds[0];
+            $.history.load(utils.updateHashPart('unit', uId));
           }
         }
-
-        if ('modified-since' in params) {
-          PTL.editor.modifiedSince = params['modified-since'];
-        } else {
-          PTL.editor.modifiedSince = null;
-        }
-
-        if ('month' in params) {
-          PTL.editor.month = params.month;
-        } else {
-          PTL.editor.month = null;
-        }
-
-        // Only accept the user parameter for 'user-*' filters
-        if ('user' in params && PTL.editor.filter.indexOf('user-') === 0) {
-          var user;
-          PTL.editor.user = user = encodeURIComponent(params.user);
-
-          var newOpts = [],
-              values = {
-            'user-suggestions':
-              // Translators: '%s' is a username
-              interpolate(gettext("%s's pending suggestions"), [user]),
-            'user-suggestions-accepted':
-              // Translators: '%s' is a username
-              interpolate(gettext("%s's accepted suggestions"), [user]),
-            'user-suggestions-rejected':
-              // Translators: '%s' is a username
-              interpolate(gettext("%s's rejected suggestions"), [user]),
-            'user-submissions':
-              // Translators: '%s' is a username
-              interpolate(gettext("%s's submissions"), [user]),
-            'user-submissions-overwritten':
-              // Translators: '%s' is a username, meaning "submissions by %s,
-              // that were overwritten"
-              interpolate(gettext("%s's overwritten submissions"), [user]),
-          };
-          for (var key in values) {
-            newOpts.push([
-              '<option value="', key, '" data-user="', user, '" class="',
-              'js-user-filter' ,'">', values[key], '</option>'
-            ].join(''));
-          }
-          $(".js-user-filter").remove();
-          $('#js-filter-status').append(newOpts.join(''));
-        }
-
-        if ('search' in params) {
-          // Note that currently the search, if provided along with the other
-          // filters, would override them
-          PTL.editor.filter = "search";
-
-          let newState = {
-            searchText: params.search,
-          };
-
-          if ('sfields' in params) {
-            newState.searchFields = params.sfields.split(',');
-          }
-          if ('soptions' in params) {
-            newState.searchOptions = params.soptions.split(',');
-          }
-
-          search.setState(newState);
-        }
-
-        // Update the filter UI to match the current filter
-
-        // disable navigation on UI toolbar events to prevent data reload
-        PTL.editor.preventNavigation = true;
-
-        var filterValue = PTL.editor.filter === 'search' ? 'all' :
-                                                            PTL.editor.filter;
-        $('#js-filter-status').select2('val', filterValue);
-
-        if (PTL.editor.filter === "checks") {
-          // if the checks selector is empty (i.e. the 'change' event was not fired
-          // because the selection did not change), force the update to populate the selector
-          if ($('#js-filter-checks').is(':hidden')) {
-            PTL.editor.getCheckOptions({
-              success: PTL.editor.appendChecks
-            });
-          }
-        }
-
-        $('#js-filter-sort').select2('val', PTL.editor.sortBy);
-
-        if (PTL.editor.filter === 'search') {
-          $('.js-filter-checks-wrapper').hide();
-        }
-
-        // re-enable normal event handling
-        PTL.editor.preventNavigation = false;
-
-        PTL.editor.fetchUnits({
-          initial: isInitial,
-          uId: uId,
-          success: function () {
-            if (uId > 0) {
-              PTL.editor.units.setCurrent(uId);
-            } else {
-              PTL.editor.units.setFirstAsCurrent();
-            }
-            PTL.editor.displayEditUnit();
-          }
-        });
-
-      }, {'unescape': true});
-    }, 1); // not sure why we had a 1000ms timeout here
-
+        this.offsetRequested = 0;
+        this.setUnit(uId);
+      });
+    }, { unescape: true });
   },
 
   /* Stuff to be done when the editor is ready  */
-  ready: function () {
-    var currentUnit = this.units.getCurrent();
+  ready() {
+    const currentUnit = this.units.getCurrent();
     if (currentUnit.get('isObsolete')) {
       this.displayObsoleteMsg();
     }
 
-    autosize(document.querySelector('textarea.expanding'));
+    autosize(document.querySelector('textarea.expanding:not([disabled="disabled"])'));
 
     // set direction of the comment body
     $('.extra-item-comment').filter(':not([dir])').bidi();
@@ -485,31 +539,28 @@ PTL.editor = {
     $('.suggestion-translation-body').filter(':not([dir])').bidi();
 
     // Focus on the first textarea, if any
-    var firstArea = $('.focusthis')[0];
+    const firstArea = $('.focusthis')[0];
     if (firstArea) {
       firstArea.focus();
     }
 
-    this.settings.targetLang = PTL.editor.normalizeCode(
-      $('.js-translation-area').attr('lang')
-    );
-
     const $devComments = $('.js-developer-comments');
     $devComments.html(linkHashtags($devComments.html()));
 
-    this.hlSearch();
+    if (this.filter === 'search') {
+      this.hlSearch();
+    }
 
     if (this.settings.tmUrl !== '') {
       this.getTMUnits();
     }
 
     if (this.tmData !== null) {
-      var tmContent = this.getTMUnitsContent(PTL.editor.tmData);
+      const tmContent = this.getTMUnitsContent(this.tmData);
       $('#extras-container').append(tmContent);
     }
 
-    // All is ready, let's call the ready functions of the MT backends
-    $("table.translate-table").trigger("mt_ready");
+    this.runHooks();
 
     this.isUnitDirty = false;
     this.keepState = false;
@@ -517,22 +568,17 @@ PTL.editor = {
     this.hideActivity();
     this.updateExportLink();
     helpers.updateRelativeDates();
-
-    // clear any pending 'Loading...' indicator timer
-    // as ajaxStop() is not fired in IE properly
-    // at initial page load (?!)
-    clearTimeout(this.delayedActivityTimer);
   },
 
   /* Things to do when no results are returned */
-  noResults: function () {
-    PTL.editor.displayMsg({body: gettext("No results.")});
-    PTL.editor.reDraw();
+  noResults() {
+    this.displayMsg({ body: gettext('No results.') });
+    this.reDraw();
   },
 
-  canNavigate: function() {
+  canNavigate() {
     if (this.isUnitDirty) {
-      return window.confirm(
+      return window.confirm(  // eslint-disable-line no-alert
         gettext(
           'You have unsaved changes in this string. Navigating away will discard those changes.'
         )
@@ -547,73 +593,41 @@ PTL.editor = {
    * Text utils
    */
 
-  /* Escape unsafe regular expression symbols:
-   * ! $ & ( ) * + - . : < = > ? [ \ ] ^ { | }
-   *
-   * Special characters can be written as
-   * Regular Expression class:
-   * [!$&(-+\-.:<-?\[-^{-}]
-   */
-  escapeUnsafeRegexSymbols: function (s) {
-    // Replace doesn't modify original variable and it recreates a
-    // new string with special characters escaped.
-    return s.replace(/[!$&(-+\-.:<-?\[-^{-}]/g, '\\$&');
-  },
-
-  /* Make regular expression using every word
-   * in input string
-   */
-  makeRegexForMultipleWords: function (s) {
-    // This function has these steps:
-    // 1) escape unsafe regular expression symbols;
-    // 2) trim ' ' (whitespaces) to avoid multiple
-    //    '|' at the beginning and at the end;
-    // 3) replace ' ' (one or more whitespaces) with '|'. In this
-    //    way every word can be searched by regular expression;
-    // 4) add brackets.
-    return ['(', PTL.editor.escapeUnsafeRegexSymbols(s).trim().replace(/ +/g,
-      '|'), ')'].join('');
-  },
-
   /* Highlights search results */
-  hlSearch: function () {
-    let {searchText, searchFields, searchOptions} = search.state;
-    let hl = PTL.editor.filter === 'search' ? searchText : '',
-        sel = [],
-        selMap = {
-          notes: 'div.developer-comments',
-          locations: 'div.translate-locations',
-          source: 'td.translate-original, div.original div.translation-text',
-          target: 'td.translate-translation'
-        },
-        hlRegex;
+  hlSearch() {
+    const { searchText, searchFields, searchOptions } = search.state;
+    const selMap = {
+      notes: 'div.developer-comments',
+      locations: 'div.translate-locations',
+      source: 'td.translate-original, .original .js-translation-text',
+      target: 'td.translate-translation',
+    };
 
     // Build highlighting selector based on chosen search fields
-    $.each(searchFields, function (i, field) {
-      sel.push("tr.edit-row " + selMap[field]);
-      sel.push("tr.view-row " + selMap[field]);
-    });
+    const sel = searchFields.map((fieldName) => [
+      `tr.edit-row ${selMap[fieldName]}`,
+      `tr.view-row ${selMap[fieldName]}`,
+    ]).reduce((a, b) => a.concat(b), []);
 
-    if (searchOptions.indexOf('exact') >= 0 ) {
-      hlRegex = new RegExp([
-          '(', PTL.editor.escapeUnsafeRegexSymbols(hl), ')'
-        ].join(''));
+    let hlRegex;
+    if (searchOptions.indexOf('exact') >= 0) {
+      hlRegex = new RegExp(`(${escapeUnsafeRegexSymbols(searchText)})`);
     } else {
-      hlRegex = new RegExp(PTL.editor.makeRegexForMultipleWords(hl), "i");
+      hlRegex = new RegExp(makeRegexForMultipleWords(searchText), 'i');
     }
-    $(sel.join(", ")).highlightRegex(hlRegex);
+    $(sel.join(', ')).highlightRegex(hlRegex);
   },
 
 
   /* Copies text into the focused textarea */
-  copyText: function (e) {
-    var $el = $(e.currentTarget),
-        action = $el.data('action'),
-        text = $el.data('string') || $el.data('translation-aid') || $el.text(),
-        $target = $(this.focused),
-        start;
+  copyText(e) {
+    const $el = $(e.currentTarget);
+    const action = $el.data('action');
+    const text = $el.data('string') || $el.data('translation-aid') || $el.text();
+    const $target = $(this.focused);
+    let start;
 
-    if (action === "overwrite") {
+    if (action === 'overwrite') {
       $target.val(text).trigger('input');
       start = text.length;
     } else {
@@ -627,32 +641,31 @@ PTL.editor = {
 
 
   /* Copies source text(s) into the target textarea(s)*/
-  copyOriginal: function (sources) {
-    var targets = $('.js-translation-area');
+  copyOriginal(sources) {
+    const targets = $('.js-translation-area');
     if (targets.length) {
-      var active,
-          max = sources.length - 1;
+      const max = sources.length - 1;
 
-      for (let i=0; i<targets.length; i++) {
-        var newval = sources[i] || sources[max];
+      for (let i = 0; i < targets.length; i++) {
+        const newval = sources[i] || sources[max];
         $(targets.get(i)).val(newval).trigger('input');
       }
 
       // Focus on the first textarea
-      active = $(targets)[0];
+      const active = $(targets)[0];
       active.focus();
       autosize.update(active);
       // Make this fuzzy
-      PTL.editor.goFuzzy();
+      this.goFuzzy();
       // Place cursor at start of target text
-      PTL.editor.cpRE.exec($(active).val());
-      i = PTL.editor.cpRE.lastIndex;
+      this.cpRE.exec($(active).val());
+      const i = this.cpRE.lastIndex;
       $(active).caret(i, i);
-      PTL.editor.cpRE.lastIndex = 0;
+      this.cpRE.lastIndex = 0;
     }
   },
 
-  copyComment: function (text) {
+  copyComment(text) {
     const comment = document.querySelector('.js-editor-comment');
     const commentForm = document.querySelector('.js-editor-comment-form');
     const commentInput = document.querySelector('#id_translator_comment');
@@ -667,53 +680,29 @@ PTL.editor = {
   },
 
 
-  /* Does the actual diffing */
-  doDiff: function (a, b) {
-    var html = [],
-        diff = this.differencer.diff_main(a, b),
-        op, text, i;
-
-    this.differencer.diff_cleanupSemantic(diff);
-
-    for (i=0; i<diff.length; i++) {
-      op = diff[i][0];
-      text = utils.fancyEscape(diff[i][1]);
-      if (op === DIFF_INSERT) {
-        html[i] = ['<span class="diff-insert">', text, '</span>'].join('');
-      } else if (op === DIFF_DELETE) {
-        html[i] = ['<span class="diff-delete">', text, '</span>'].join('');
-      } else if (op === DIFF_EQUAL) {
-        html[i] = text;
-      }
-    }
-
-    return html.join('');
-  },
-
-
   /*
    * Fuzzying / unfuzzying functions
    */
 
   /* Sets the current unit's styling as fuzzy */
-  doFuzzyStyle: function () {
-    $("tr.edit-row").addClass("fuzzy-unit");
+  doFuzzyStyle() {
+    $('tr.edit-row').addClass('fuzzy-unit');
   },
 
 
   /* Unsets the current unit's styling as fuzzy */
-  undoFuzzyStyle: function () {
-    $("tr.edit-row").removeClass("fuzzy-unit");
+  undoFuzzyStyle() {
+    $('tr.edit-row').removeClass('fuzzy-unit');
   },
 
 
   /* Checks the current unit's fuzzy checkbox */
-  doFuzzyBox: function () {
-    var $checkbox = $('input.fuzzycheck');
+  doFuzzyBox() {
+    const $checkbox = $('input.fuzzycheck');
     $checkbox.prop('checked', true);
 
     if (!this.settings.isAdmin) {
-      if (!PTL.editor.isSuggestMode()) {
+      if (!this.isSuggestMode()) {
         $('.js-fuzzy-block').show();
       }
       $checkbox[0].defaultChecked = true;
@@ -724,15 +713,15 @@ PTL.editor = {
 
 
   /* Unchecks the current unit's fuzzy checkbox */
-  undoFuzzyBox: function () {
-    var $checkbox = $('input.fuzzycheck');
+  undoFuzzyBox() {
+    const $checkbox = $('input.fuzzycheck');
     $checkbox.prop('checked', false);
     $checkbox.trigger('change');
   },
 
 
   /* Sets the current unit status as fuzzy (both styling and checkbox) */
-  goFuzzy: function () {
+  goFuzzy() {
     if (!this.isFuzzy()) {
       this.doFuzzyStyle();
       this.doFuzzyBox();
@@ -741,7 +730,7 @@ PTL.editor = {
 
 
   /* Unsets the current unit status as fuzzy (both styling and checkbox) */
-  ungoFuzzy: function () {
+  ungoFuzzy() {
     if (this.isFuzzy()) {
       this.undoFuzzyStyle();
       this.undoFuzzyBox();
@@ -750,11 +739,11 @@ PTL.editor = {
 
 
   /* Returns whether the current unit is fuzzy or not */
-  isFuzzy: function () {
+  isFuzzy() {
     return $('input.fuzzycheck').prop('checked');
   },
 
-  toggleFuzzyStyle: function () {
+  toggleFuzzyStyle() {
     if (this.isFuzzy()) {
       this.doFuzzyStyle();
     } else {
@@ -762,59 +751,60 @@ PTL.editor = {
     }
   },
 
-  toggleState: function () {
+  toggleState() {
     // `blur()` prevents a double-click effect if the checkbox was
     // previously clicked using the mouse
     $('input.fuzzycheck').blur().click();
   },
 
   /* Updates unit textarea and input's `default*` values. */
-  updateUnitDefaultProperties: function () {
-    $('.js-translation-area').each(function () {
+  updateUnitDefaultProperties() {
+    $('.js-translation-area').each(function setDefaultValue() {
       this.defaultValue = this.value;
     });
-    var checkbox = $('#id_state')[0];
+    const checkbox = document.querySelector('#id_state');
     checkbox.defaultChecked = checkbox.checked;
     this.handleTranslationChange();
   },
 
   /* Updates comment area's `defaultValue` value. */
-  updateCommentDefaultProperties: function () {
+  updateCommentDefaultProperties() {
     const comment = document.querySelector('#id_translator_comment');
     comment.defaultValue = comment.value;
     this.handleTranslationChange();
   },
 
-  handleTranslationChange: function () {
+  handleTranslationChange() {
     const comment = document.querySelector('#id_translator_comment');
     const commentChanged = comment !== null ?
                            comment.value !== comment.defaultValue : false;
 
-    var submit = $('.js-submit')[0],
-        suggest = $('.js-suggest')[0],
-        translations = $('.js-translation-area').get(),
-        suggestions = $('.js-user-suggestion').map(function () {
-            return $(this).data('translation-aid');
-          }).get(),
-        checkbox = $('#id_state')[0],
-        stateChanged = checkbox.defaultChecked !== checkbox.checked,
-        areaChanged = false,
-        needsReview = false,
-        suggestionExists = false,
-        area, i;
+    const submit = document.querySelector('.js-submit');
+    const suggest = document.querySelector('.js-suggest');
+    const translations = $('.js-translation-area').get();
+    const suggestions = $('.js-user-suggestion').map(function getSuggestions() {
+      return $(this).data('translation-aid');
+    }).get();
+    const checkbox = document.querySelector('#id_state');
+    const stateChanged = checkbox.defaultChecked !== checkbox.checked;
+
+    let areaChanged = false;
+    let needsReview = false;
+    let suggestionExists = false;
+    let area;
 
     // Non-admin users are required to clear the fuzzy checkbox
     if (!this.settings.isAdmin) {
       needsReview = checkbox.checked === true;
     }
 
-    for (i=0; i<translations.length && !areaChanged; i++) {
+    for (let i = 0; i < translations.length && !areaChanged; i++) {
       area = translations[i];
       areaChanged = area.defaultValue !== area.value;
     }
 
     if (suggestions.length) {
-      for (i=0; i<translations.length && !suggestionExists; i++) {
+      for (let i = 0; i < translations.length && !suggestionExists; i++) {
         area = translations[i];
         suggestionExists = suggestions.indexOf(area.value) !== -1;
       }
@@ -823,40 +813,39 @@ PTL.editor = {
     // Store dirty state for the current unit
     this.isUnitDirty = areaChanged || stateChanged || commentChanged;
 
-    if (submit !== undefined) {
+    if (submit !== null) {
       submit.disabled = !(stateChanged || areaChanged) || needsReview;
     }
-    if (suggest !== undefined) {
+    if (suggest !== null) {
       suggest.disabled = !areaChanged || suggestionExists;
     }
   },
 
-  onStateChange: function () {
+  onStateChange() {
     this.handleTranslationChange();
 
     this.toggleFuzzyStyle();
   },
 
-  onStateClick: function () {
+  onStateClick() {
     // Prevent automatic unfuzzying on explicit user action
     this.keepState = true;
   },
 
-  onTextareaChange: function (e) {
+  onTextareaChange(e) {
     this.handleTranslationChange();
 
-    var that = this,
-        el = e.target,
-        hasChanged = el.defaultValue !== el.value;
+    const el = e.target;
+    const hasChanged = el.defaultValue !== el.value;
 
     if (hasChanged && !this.keepState) {
       this.ungoFuzzy();
     }
 
     clearTimeout(this.similarityTimer);
-    this.similarityTimer = setTimeout(function () {
-      that.checkSimilarTranslations();
-      that.similarityTimer = null;  // So we know the code was run
+    this.similarityTimer = setTimeout(() => {
+      this.checkSimilarTranslations();
+      this.similarityTimer = null;  // So we know the code was run
     }, 200);
   },
 
@@ -865,23 +854,22 @@ PTL.editor = {
    * Translation's similarity
    */
 
-  getSimilarityData: function () {
-    var currentUnit = this.units.getCurrent();
+  getSimilarityData() {
+    const currentUnit = this.units.getCurrent();
     return {
       similarity: currentUnit.get('similarityHuman'),
-      mt_similarity: currentUnit.get('similarityMT')
+      mt_similarity: currentUnit.get('similarityMT'),
     };
   },
 
-  calculateSimilarity: function (newTranslation, $elements, dataSelector) {
-    var maxSimilarity = 0,
-        boxId = null,
-        $element, aidText, similarity, i;
+  calculateSimilarity(newTranslation, $elements, dataSelector) {
+    let maxSimilarity = 0;
+    let boxId = null;
 
-    for (i=0; i<$elements.length; i++) {
-      $element = $elements.eq(i);
-      aidText = $element.data(dataSelector);
-      similarity = this.wordComparer.similarity(newTranslation, aidText);
+    for (let i = 0; i < $elements.length; i++) {
+      const $element = $elements.eq(i);
+      const aidText = $element.data(dataSelector);
+      const similarity = this.wordComparer.similarity(newTranslation, aidText);
 
       if (similarity > maxSimilarity) {
         maxSimilarity = similarity;
@@ -891,15 +879,15 @@ PTL.editor = {
     }
 
     return {
+      boxId,
       max: maxSimilarity,
-      boxId: boxId
     };
   },
 
-  checkSimilarTranslations: function () {
-    var dataSelector = 'translation-aid',
-        dataSelectorMT = 'translation-aid-mt',
-        $aidElementsMT = $(['[data-', dataSelectorMT, ']'].join(''));
+  checkSimilarTranslations() {
+    const dataSelector = 'translation-aid';
+    const dataSelectorMT = 'translation-aid-mt';
+    const $aidElementsMT = $(`[data-${dataSelectorMT}]`);
 
     let aidElementsSelector = `[data-${dataSelector}]`;
 
@@ -914,11 +902,10 @@ PTL.editor = {
       return false;
     }
 
-    var currentUnit = this.units.getCurrent(),
-        newTranslation = $('.js-translation-area').val(),
-        simHuman = {max: 0, boxId: null},
-        simMT = {max: 0, boxId: null},
-        similarity;
+    const currentUnit = this.units.getCurrent();
+    const newTranslation = $('.js-translation-area').val();
+    let simHuman = { max: 0, boxId: null };
+    let simMT = { max: 0, boxId: null };
 
     if ($aidElements.length) {
       simHuman = this.calculateSimilarity(newTranslation, $aidElements,
@@ -931,28 +918,31 @@ PTL.editor = {
 
     currentUnit.set({
       similarityHuman: simHuman.max,
-      similarityMT: simMT.max
+      similarityMT: simMT.max,
     });
 
-    similarity = (simHuman.max > simMT.max) ? simHuman : simMT;
+    const similarity = (simHuman.max > simMT.max) ? simHuman : simMT;
     this.highlightBox(similarity.boxId, similarity.max === 1);
+    return true;
   },
 
   /* Applies highlight classes to `boxId`. */
-  highlightBox: function (boxId, isExact) {
-    var bestMatchCls = 'best-match',
-        exactMatchCls = 'exact-match';
+  highlightBox(boxId, isExact) {
+    const bestMatchCls = 'best-match';
+    const exactMatchCls = 'exact-match';
 
-    $('.translate-table').find(['.', bestMatchCls].join(''))
-                         .removeClass([bestMatchCls, exactMatchCls].join(' '));
+    $('.translate-table').find(`.${bestMatchCls}`)
+                         .removeClass(`${bestMatchCls} ${exactMatchCls}`);
 
     if (boxId === null) {
       return false;
     }
 
-    var hlClasses = [bestMatchCls];
-    isExact && hlClasses.push(exactMatchCls);
-    $(boxId).addClass(hlClasses.join(' '));
+    $(boxId).addClass(cx({
+      [bestMatchCls]: true,
+      [exactMatchCls]: isExact,
+    }));
+    return true;
   },
 
 
@@ -961,25 +951,25 @@ PTL.editor = {
    */
 
   /* Changes the editor into suggest mode */
-  doSuggestMode: function () {
-    $("table.translate-table").addClass("suggest-mode");
+  doSuggestMode() {
+    this.editorTableEl.classList.add('suggest-mode');
   },
 
 
   /* Changes the editor into submit mode */
-  undoSuggestMode: function () {
-    $("table.translate-table").removeClass("suggest-mode");
+  undoSuggestMode() {
+    this.editorTableEl.classList.remove('suggest-mode');
   },
 
 
   /* Returns true if the editor is in suggest mode */
-  isSuggestMode: function () {
-    return $("table.translate-table").hasClass("suggest-mode");
+  isSuggestMode() {
+    return this.editorTableEl.classList.contains('suggest-mode');
   },
 
 
   /* Toggles suggest/submit modes */
-  toggleSuggestMode: function (e) {
+  toggleSuggestMode(e) {
     e.preventDefault();
     if (this.isSuggestMode()) {
       this.undoSuggestMode();
@@ -988,11 +978,11 @@ PTL.editor = {
     }
   },
 
-  updateExportLink: function () {
-    var $exportOpt = $('.js-export-view'),
-        baseUrl = $exportOpt.data('export-url'),
-        hash = utils.getHash().replace(/&?unit=\d+/, ''),
-        exportLink = hash ? [baseUrl, hash].join('?') : baseUrl;
+  updateExportLink() {
+    const $exportOpt = $('.js-export-view');
+    const baseUrl = $exportOpt.data('export-url');
+    const hash = utils.getHash().replace(/&?unit=\d+/, '');
+    const exportLink = hash ? `${baseUrl}?${hash}` : baseUrl;
 
     $exportOpt.data('href', exportLink);
   },
@@ -1001,82 +991,77 @@ PTL.editor = {
    * Indicators, messages, error handling
    */
 
-  showActivity: function (force) {
+  showActivity() {
     this.hideMsg();
-    $("#js-editor-act").spin().fadeIn(300);
+    this.$editorActivity.spin().fadeIn(300);
   },
 
-  hideActivity: function () {
-    $("#js-editor-act").spin(false).fadeOut(300);
+  hideActivity() {
+    this.$editorActivity.spin(false).fadeOut(300);
   },
 
   /* Displays an informative message */
-  displayMsg: function (opts) {
-    _.defaults(opts, {showClose: true});
-
+  displayMsg({ showClose = true, body = null }) {
     this.hideActivity();
     helpers.fixSidebarHeight();
-    $('#js-editor-msg-overlay').html(this.tmpl.msg({opts: opts})).fadeIn(300);
+    this.$msgOverlay.html(
+      this.tmpl.msg({ showClose, body })
+    ).fadeIn(300);
   },
 
-  hideMsg: function () {
-    var $wrapper = $('#js-editor-msg-overlay');
-    $wrapper.length && $wrapper.fadeOut(300);
+  hideMsg() {
+    if (this.$msgOverlay.length) {
+      this.$msgOverlay.fadeOut(300);
+    }
   },
 
   /* Displays error messages on top of the toolbar */
-  displayError: function (text) {
+  displayError(text) {
     this.hideActivity();
-    msg.show({text: text, level: 'error'});
+    msg.show({ text, level: 'error' });
   },
 
 
   /* Handles XHR errors */
-  error: function (xhr, s) {
-    var msg = "";
+  error(xhr, s) {
+    let text = '';
 
-    if (s === "abort") {
-        return;
+    if (s === 'abort') {
+      return;
     }
 
     if (xhr.status === 0) {
-      msg = gettext("Error while connecting to the server");
+      text = gettext('Error while connecting to the server');
     } else if (xhr.status === 402) {
       captcha.onError(xhr, 'PTL.editor.error');
     } else if (xhr.status === 404) {
-      msg = gettext("Not found");
+      text = gettext('Not found');
     } else if (xhr.status === 500) {
-      msg = gettext("Server error");
+      text = gettext('Server error');
     } else if (s === 'timeout') {
-      msg = gettext("The server seems down. Try again later.");
+      text = gettext('The server seems down. Try again later.');
     } else {
-      // Since we use jquery-jsonp, we must differentiate between
-      // the passed arguments
-      if (xhr.hasOwnProperty('responseText')) {
-        msg = $.parseJSON(xhr.responseText).msg;
-      } else {
-        msg = gettext("Unknown error");
-      }
+      text = $.parseJSON(xhr.responseText).msg;
     }
 
-    PTL.editor.displayError(msg);
+    PTL.editor.displayError(text);
   },
 
-  displayObsoleteMsg: function () {
-    var msgText = gettext('This string no longer exists.'),
-        backMsg = gettext('Go back to browsing'),
-        backLink = $('.js-back-to-browser').attr('href'),
-        reloadMsg = gettext('Reload page'),
-        html = [
-          '<div>', msgText, '</div>',
-          '<div class="editor-msg-btns">',
-            '<a class="btn btn-xs js-editor-reload" href="#">', reloadMsg, '</a>',
-            '<a class="btn btn-xs" href="', backLink, '">', backMsg, '</a>',
+  displayObsoleteMsg() {
+    const msgText = gettext('This string no longer exists.');
+    const backMsg = gettext('Go back to browsing');
+    const backLink = this.backToBrowserEl.getAttribute('href');
+    const reloadMsg = gettext('Reload page');
+    const html = [
+      '<div>', msgText, '</div>',
+      '<div class="editor-msg-btns">',
+      '<a class="btn btn-xs js-editor-reload" href="#">', reloadMsg, '</a>',
+      '<a class="btn btn-xs" href="', backLink, '">', backMsg, '</a>',
 
-          '</div>',
-        ].join('');
+      '</div>',
+    ].join('');
 
-    PTL.editor.displayMsg({body: html, showClose: false});
+    this.displayMsg({ body: html, showClose: false });
   },
 
 
@@ -1084,12 +1069,76 @@ PTL.editor = {
    * Misc functions
    */
 
+  /* Gets the offset of a unit in the total result set */
+  getOffsetOfUid(uid) {
+    return this.initialOffset + this.units.uIds.indexOf(uid);
+  },
+
+  /* Gets the start offset for the chunk of a given offset */
+  getStartOfChunk(offset) {
+    return offset - (offset % (2 * this.units.chunkSize));
+  },
+
+  /* Checks whether editor needs the next batch of units */
+  needsNextUnitBatch() {
+    return (
+      this.units.uIds.slice(-7).indexOf(this.units.activeUnit.id) !== -1 &&
+      this.getOffsetOfLastUnit() < this.units.total
+    );
+  },
+
+  /* Checks whether editor needs the previous batch of units */
+  needsPreviousUnitBatch() {
+    return (
+      this.units.uIds.slice(0, 7).indexOf(this.units.activeUnit.id) !== -1 &&
+      this.initialOffset > 0
+    );
+  },
+
+  /* Returns the uids of the last batch of units currently stored */
+  getPreviousUids() {
+    return this.units.uIds.slice(-(2 * this.units.chunkSize));
+  },
+
+  /* Sets the offset in the browser location */
+  setOffset(uid) {
+    $.history.load(utils.updateHashPart(
+      'offset', this.getStartOfChunk(this.getOffsetOfUid(uid)))
+    );
+  },
+
+  /* Gets the offset of the last unit currently held by the client */
+  getOffsetOfLastUnit() {
+    return this.initialOffset + this.units.uIds.length;
+  },
+
+  /* Remembers offsets that are currently being fetched to prevent multiple
+   * calls to same URL
+   */
+  markAsFetching(offset) {
+    this.fetchingOffsets.push(offset);
+  },
+
+  /* Removes remembered offsets once the XHR call has completed */
+  markAsFetched(offset) {
+    if (this.fetchingOffsets.indexOf(offset) !== -1) {
+      this.fetchingOffsets = this.fetchingOffsets.splice(
+        this.fetchingOffsets.indexOf(offset), 1
+      );
+    }
+  },
+
+  /* Returns true if client is awaiting a get_units call with given offset */
+  isBeingFetched(offset) {
+    return this.fetchingOffsets.indexOf(offset) !== -1;
+  },
+
   /* Gets common request data */
-  getReqData: function () {
-    var reqData = {};
+  getReqData() {
+    const reqData = {};
 
     if (this.filter === 'checks' && this.checks.length) {
-      reqData.checks = this.checks.join(",");
+      reqData.checks = this.checks.join(',');
     }
     if (this.filter === 'checks' && this.category.length) {
       reqData.category = this.category;
@@ -1097,13 +1146,15 @@ PTL.editor = {
 
 
     if (this.filter === 'search') {
-      let {searchText, searchFields, searchOptions} = search.state;
+      const { searchText, searchFields, searchOptions } = search.state;
       reqData.search = searchText;
       reqData.sfields = searchFields;
       reqData.soptions = searchOptions;
     } else {
       reqData.filter = this.filter;
-      this.sortBy !== 'default' && (reqData.sort = this.sortBy);
+      if (this.sortBy !== 'default') {
+        reqData.sort = this.sortBy;
+      }
     }
 
     if (this.modifiedSince !== null) {
@@ -1123,60 +1174,76 @@ PTL.editor = {
    */
 
 
-  /* Builds a single row */
-  buildRow: function (unit) {
-    return [
-      '<tr id="row', unit.id, '" class="view-row">',
-        this.tmpl.vUnit({unit: unit.toJSON()}),
-      '</tr>'
-    ].join('');
+  /* Renders a single row */
+  renderRow(unit) {
+    return (`
+      <tr id="row${unit.id}" class="view-row">
+        ${this.tmpl.vUnit({ unit: unit.toJSON() })}
+      </tr>
+    `);
   },
 
-  /* Builds the editor rows */
-  buildRows: function () {
-    var unitGroups = this.getUnitGroups(),
-        currentUnit = this.units.getCurrent(),
-        rows = [],
-        i, unit;
+  renderEditorRow(unit) {
+    const eClass = cx('edit-row', {
+      'fuzzy-unit': unit.get('isfuzzy'),
+      'with-ctx': this.filter !== 'all',
+    });
 
-    _.each(unitGroups, function (unitGroup) {
+    const [ctxRowBefore, ctxRowAfter] = this.renderCtxControls({ hasData: false });
+
+    return (`
+      ${this.filter !== 'all' ? ctxRowBefore : ''}
+      <tr id="row${unit.id}" class="${eClass}">
+        ${this.editorRow}
+      </tr>
+      ${this.filter !== 'all' ? ctxRowAfter : ''}
+    `);
+  },
+
+  /* Renders the editor rows */
+  renderRows() {
+    const unitGroups = this.getUnitGroups();
+    const currentUnit = this.units.getCurrent();
+
+    const rows = [];
+
+    unitGroups.forEach((unitGroup) => {
       // Don't display a delimiter row if all units have the same origin
       if (unitGroups.length !== 1) {
-        rows.push([
-          '<tr class="delimiter-row"><td colspan="2">',
-            '<div class="hd"><h2>', unitGroup.path, '</h2></div>',
+        rows.push(
+          '<tr class="delimiter-row"><td colspan="2">' +
+            `<div class="hd"><h2>${unitGroup.path}</h2></div>` +
           '</td></tr>'
-        ].join(''));
+        );
       }
 
-      for (i=0; i<unitGroup.units.length; i++) {
-        unit = unitGroup.units[i];
+      for (let i = 0; i < unitGroup.units.length; i++) {
+        const unit = unitGroup.units[i];
 
         if (unit.id === currentUnit.id) {
-          rows.push(this.getEditUnit());
+          rows.push(this.renderEditorRow(unit));
         } else {
-          rows.push(this.buildRow(unit));
+          rows.push(this.renderRow(unit));
         }
       }
-    }, this);
+    });
 
     return rows.join('');
   },
 
 
-  /* Builds context rows for units passed as 'units' */
-  buildCtxRows: function (units, extraCls) {
-    var i, unit,
-        currentUnit = this.units.getCurrent(),
-        rows = '';
+  /* Renders context rows for units passed as 'units' */
+  renderCtxRows(units, extraCls) {
+    const currentUnit = this.units.getCurrent();
+    let rows = '';
 
-    for (i=0; i<units.length; i++) {
+    for (let i = 0; i < units.length; i++) {
       // FIXME: Please let's use proper models for context units
-      unit = units[i];
-      unit = $.extend({}, currentUnit.toJSON(), unit);
+      let unit = units[i];
+      unit = assign({}, currentUnit.toJSON(), unit);
 
-      rows += '<tr id="ctx' + unit.id + '" class="ctx-row ' + extraCls + '">';
-      rows += this.tmpl.vUnit({unit: unit});
+      rows += `<tr id="ctx${unit.id}" class="ctx-row ${extraCls}">`;
+      rows += this.tmpl.vUnit({ unit });
       rows += '</tr>';
     }
 
@@ -1185,15 +1252,15 @@ PTL.editor = {
 
 
   /* Returns the unit groups for the current editor state */
-  getUnitGroups: function () {
-    var limit = parseInt(((this.units.chunkSize - 1) / 2), 10),
-        unitCount = this.units.length,
-        currentUnit = this.units.getCurrent(),
-        curIndex = this.units.indexOf(currentUnit),
-        begin = curIndex - limit,
-        end = curIndex + 1 + limit,
-        prevPath = null,
-        pootlePath;
+  getUnitGroups() {
+    const limit = parseInt(((this.units.chunkSize - 1) / 2), 10);
+    const unitCount = this.units.length;
+    const currentUnit = this.units.getCurrent();
+    const curIndex = this.units.indexOf(currentUnit);
+
+    let begin = curIndex - limit;
+    let end = curIndex + 1 + limit;
+    let prevPath = null;
 
     if (begin < 0) {
       end = end + -begin;
@@ -1207,15 +1274,15 @@ PTL.editor = {
       end = unitCount;
     }
 
-    return _.reduce(this.units.slice(begin, end), function (out, unit) {
-      pootlePath = unit.get('store').get('pootlePath');
+    return this.units.slice(begin, end).reduce((out, unit) => {
+      const pootlePath = unit.get('store').get('pootlePath');
 
       if (pootlePath === prevPath) {
-        out[out.length-1].units.push(unit);
+        out[out.length - 1].units.push(unit);
       } else {
         out.push({
           path: pootlePath,
-          units: [unit]
+          units: [unit],
         });
       }
 
@@ -1227,291 +1294,262 @@ PTL.editor = {
 
 
   /* Sets the edit view for the current active unit */
-  displayEditUnit: function () {
-    if (PTL.editor.units.length) {
-      this.fetchUnits();
-
-      // Hide any visible message
+  renderUnit() {
+    if (this.units.length) {
       this.hideMsg();
 
-      this.reDraw(this.buildRows());
-
-      this.updateNavButtons();
+      this.reDraw(this.renderRows());
     }
   },
 
 
   /* reDraws the translate table rows */
-  reDraw: function (newTbody) {
-    const $where = $('.js-editor-body');
-    const $oldRows = $where.find('tr');
+  reDraw(newTbody) {
+    const $oldRows = this.$editorBody.find('tr');
+
+    // Remove autosize event listeners for textarea before removing
+    autosize.destroy(document.querySelectorAll('textarea.expanding'));
 
     $oldRows.remove();
 
     if (newTbody !== undefined) {
-      $where.append(newTbody);
+      this.$editorBody.append(newTbody);
 
-      // Call the post-render handlers
       this.ready();
     }
   },
 
 
   /* Updates a button in `selector` to the `disable` state */
-  updateNavButton: function (selector, disable) {
-    var $el = $(selector);
-
+  updateNavButton($button, disable) {
     // Avoid unnecessary actions
-    if ($el.is(':disabled') && disable || $el.is(':enabled') && !disable) {
+    if ($button.is(':disabled') && disable || $button.is(':enabled') && !disable) {
       return;
     }
 
     if (disable) {
-      $el.data('title', $el.attr('title'));
-      $el.removeAttr('title');
+      $button.data('title', $button.attr('title'));
+      $button.removeAttr('title');
     } else {
-      $el.attr('title', $el.data('title'));
+      $button.attr('title', $button.data('title'));
     }
-    $el.prop('disabled', disable);
+    $button.prop('disabled', disable);
   },
 
 
-  /* Updates previous/next navigation button states */
-  updateNavButtons: function () {
-    this.updateNavButton('#js-nav-prev', !this.units.hasPrev());
-    this.updateNavButton('#js-nav-next', !this.units.hasNext());
-  },
+  /* Updates the navigation widget */
+  updateNavigation() {
+    this.updateNavButton(this.$navPrev,
+                         this.initialOffset === 0 && !this.units.hasPrev());
+    this.updateNavButton(this.$navNext, !this.units.hasNext());
 
+    this.unitCountEl.textContent = this.units.total;
 
-  /* Fetches more units in case they're needed */
-  fetchUnits: function (opts) {
-    // TODO: move logic into UnitSet
-    var defaults = {
-          initial: false,
-          uId: 0
-        },
-        viewUrl = l('/xhr/units/'),
-        reqData = {
-          path: this.settings.pootlePath
-        };
-
-    opts = $.extend({}, defaults, opts);
-
-    if (opts.initial) {
-      reqData.initial = opts.initial;
-
-      if (opts.uId > 0) {
-        reqData.uids = opts.uId;
-      }
-    } else {
-      // Only fetch units limited to an offset, and omit units that have
-      // already been fetched
-      var fetchedIds = this.units.fetchedIds(),
-          offset = this.units.chunkSize,
-          curUId = opts.uId > 0 ? opts.uId : this.units.getCurrent().id,
-          uIndex = this.units.uIds.indexOf(curUId),
-          uIds, begin, end;
-
-      begin = Math.max(uIndex - offset, 0);
-      end = Math.min(uIndex + offset + 1, this.units.total);
-
-      // Ensure we retrieve chunks of the right size
-      if (opts.uId === 0) {
-        if (fetchedIds.indexOf(this.units.uIds[begin]) === -1) {
-          begin = Math.max(begin - offset, 0);
-        }
-        if (fetchedIds.indexOf(this.units.uIds[end - 1]) === -1) {
-          end = Math.min(end + offset + 1, this.units.total);
-        }
-      }
-
-      uIds = this.units.uIds.slice(begin, end);
-      uIds = _.difference(uIds, fetchedIds);
-
-      if (!uIds.length) {
-        return;  // Nothing to be done
-      }
-
-      reqData.uids = uIds.join(',');
-    }
-
-    $.extend(reqData, this.getReqData());
-
-    $.ajax({
-      url: viewUrl,
-      data: reqData,
-      dataType: 'json',
-      cache: false,
-      success: function (data) {
-        if (data.uIds) {
-          // Clear old data and add new results
-          PTL.editor.units.reset();
-
-          PTL.editor.units.uIds = data.uIds;
-          PTL.editor.units.total = data.uIds.length;
-        }
-
-        // Store view units in the client
-        if (data.unitGroups.length) {
-          var i, unitGroup;
-          for (i=0; i<data.unitGroups.length; i++) {
-            unitGroup = data.unitGroups[i];
-            $.each(unitGroup, function (pootlePath, group) {
-              var storeData = $.extend({pootlePath: pootlePath}, group.meta),
-                  units = _.map(group.units, function (unit) {
-                    return $.extend(unit, {store: storeData});
-                  });
-              PTL.editor.units.set(units, {remove: false});
-            });
-          }
-
-          if (opts.success && $.isFunction(opts.success)) {
-            opts.success();
-          }
-        } else {
-          PTL.editor.noResults();
-        }
-      },
-      error: PTL.editor.error
-    });
-  },
-
-  /* Updates the navigation controls */
-  updateNav: function () {
-    $("#items-count").text(this.units.total);
-
-    var currentUnit = PTL.editor.units.getCurrent();
+    const currentUnit = this.units.getCurrent();
     if (currentUnit !== undefined) {
-      var uIndex = this.units.uIds.indexOf(currentUnit.id) + 1;
-      $('.js-unit-index').text(uIndex);
+      if (this.offsetRequested === 0) {
+        this.unitIndexEl.textContent = (
+          this.units.uIds.indexOf(currentUnit.id) + 1 + this.initialOffset
+        );
+      }
     }
-
   },
 
-  /* Loads the edit unit for the current active unit */
-  getEditUnit: function () {
-    var editUnit, editCtxRowBefore, editCtxRowAfter, editCtxWidgets, hasData,
-        eClass = "edit-row",
-        currentUnit = this.units.getCurrent(),
-        uid = currentUnit.id,
-        editUrl = l(['/xhr/units/', uid, '/edit/'].join('')),
-        widget = '',
-        ctx = {before: [], after: []};
-
-    let reqData = {};
-    this.settings.vFolder && (reqData.vfolder = this.settings.vFolder);
-
-    $.ajax({
-      url: editUrl,
-      async: false,
-      data: reqData,
-      dataType: 'json',
-      success: function (data) {
-        PTL.editor.tmData = data.tm_suggestions || null;
-        widget = data.editor;
-
-        PTL.editor.updateNav();
-
-        currentUnit.set('isObsolete', data.is_obsolete);
-
-        if (data.ctx) {
-          // Initialize context gap to the maximum context rows available
-          PTL.editor.ctxGap = Math.max(data.ctx.before.length,
-                                       data.ctx.after.length);
-          ctx.before = data.ctx.before;
-          ctx.after = data.ctx.after;
+  /* Fetches more units in case they are needed */
+  fetchUnits({ initial = false, uId = 0, initialOffset = 0 } = {}) {
+    let offsetToFetch = -1;
+    let uidToFetch = -1;
+    let previousUids = [];
+    if (initial) {
+      this.initialOffset = -1;
+      this.offset = 0;
+      if (uId > 0) {
+        uidToFetch = uId;
+      }
+      if (initialOffset > 0) {
+        offsetToFetch = initialOffset;
+        this.initialOffset = initialOffset;
+      }
+    } else if (this.units.length && this.units.total) {
+      if (this.needsNextUnitBatch()) {
+        // The unit is in the last 7, try and get the next chunk - also sends
+        // the last chunk of uids to allow server to adjust results
+        previousUids = this.getPreviousUids();
+        offsetToFetch = this.offset;
+      } else if (this.needsPreviousUnitBatch()) {
+        // The unit is in the first 7, try and get the previous chunk
+        offsetToFetch = Math.max(this.initialOffset - (2 * this.units.chunkSize), 0);
+      }
+    }
+    if (initial || uidToFetch > -1 ||
+        (offsetToFetch > -1 && !this.isBeingFetched(offsetToFetch))) {
+      const reqData = {
+        path: this.settings.pootlePath,
+      };
+      assign(reqData, this.getReqData());
+      if (offsetToFetch > -1) {
+        this.markAsFetching(offsetToFetch);
+        if (offsetToFetch > 0) {
+          reqData.offset = offsetToFetch;
         }
-      },
-      error: PTL.editor.error
+      }
+      if (uidToFetch > -1) {
+        reqData.uids = uidToFetch;
+      }
+      if (previousUids.length > 0) {
+        reqData.previous_uids = previousUids;
+      }
+      return UnitAPI.fetchUnits(reqData)
+        .then(
+          (data) => this.storeUnitData(data),
+          this.error
+        ).always(() => this.markAsFetched(offsetToFetch));
+    }
+    /* eslint-disable new-cap */
+    return $.Deferred((deferred) => deferred.reject(false));
+    /* eslint-enable new-cap */
+  },
+
+  storeUnitData(data) {
+    const { total } = data;
+    const { start } = data;
+    const { end } = data;
+    let { unitGroups } = data;
+    let prependUnits = false;
+
+    if (!unitGroups.length) {
+      this.noResults();
+      return false;
+    }
+    if (this.offset === 0) {
+      this.units.reset();
+      this.units.uIds = [];
+    }
+    if (this.initialOffset === -1) {
+      this.initialOffset = start;
+    } else if (start < this.initialOffset) {
+      this.initialOffset = start;
+      prependUnits = true;
+      unitGroups = unitGroups.reverse();
+    }
+    for (let i = 0; i < unitGroups.length; i++) {
+      const unitGroup = unitGroups[i];
+      for (const pootlePath in unitGroup) {
+        if (!unitGroup.hasOwnProperty(pootlePath)) {
+          continue;
+        }
+        const group = unitGroup[pootlePath];
+        const store = assign({ pootlePath }, group.meta);
+        const units = group.units.map(
+          (unit) => assign(unit, { store })  // eslint-disable-line no-loop-func
+        );
+        if (prependUnits) {
+          this.units.set(units, { remove: false, at: 0 });
+          // eslint-disable-next-line no-loop-func
+          units.reverse().map((unit) => this.units.uIds.unshift(unit.id));
+        } else {
+          this.units.set(units, { remove: false, at: this.units.length });
+          // eslint-disable-next-line no-loop-func
+          units.map((unit) => this.units.uIds.push(unit.id));
+        }
+      }
+    }
+    this.offset = end;
+    this.units.total = total;
+    this.updateNavigation();
+    return true;
+  },
+
+  /* Stores editor data for the current unit */
+  setEditUnit(data) {
+    const currentUnit = this.units.getCurrent();
+    currentUnit.set('isObsolete', data.is_obsolete);
+    currentUnit.set('sources', data.sources);
+
+    this.tmData = data.tm_suggestions || null;
+    this.editorRow = data.editor;
+  },
+
+  /* Sets a new unit as the current one, rendering it as well */
+  setUnit(unit) {
+    const newUnit = this.units.setCurrent(unit);
+    const body = {};
+    if (this.settings.vFolder) {
+      body.vfolder = this.settings.vFolder;
+    }
+    this.fetchUnits().always(() => {
+      this.updateNavigation();
+      UnitAPI.fetchUnit(newUnit.id, body)
+        .then(
+          (data) => {
+            this.setEditUnit(data);
+            this.renderUnit();
+          },
+          this.error
+        );
     });
-
-    eClass += currentUnit.get('isfuzzy') ? " fuzzy-unit" : "";
-    eClass += PTL.editor.filter !== 'all' ? " with-ctx" : "";
-
-    hasData = ctx.before.length || ctx.after.length;
-    editCtxWidgets = this.editCtxUI({hasData: hasData});
-    editCtxRowBefore = editCtxWidgets[0];
-    editCtxRowAfter = editCtxWidgets[1];
-
-    editUnit = (PTL.editor.filter !== 'all' ?
-              editCtxRowBefore + this.buildCtxRows(ctx.before, "before") : '') +
-             '<tr id="row' + uid + '" class="' + eClass + '">' +
-             widget + '</tr>' +
-             (PTL.editor.filter !== 'all' ?
-              this.buildCtxRows(ctx.after, "after") + editCtxRowAfter : '');
-
-    return editUnit;
   },
 
   /* Pushes translation submissions and moves to the next unit */
-  submit: function (e) {
-    e.preventDefault();
+  handleSubmit() {
+    const el = document.querySelector('input.submit');
+    const newTranslation = $('.js-translation-area')[0].value;
+    const suggestions = $('.js-user-suggestion').map(function getSuggestions() {
+      return {
+        text: this.dataset.translationAid,
+        id: this.dataset.suggId,
+      };
+    }).get();
+    const captchaCallbacks = {
+      sfn: 'PTL.editor.processSubmission',
+      efn: 'PTL.editor.error',
+    };
 
-    var el = e.target,
-        uId = PTL.editor.units.getCurrent().id,
-        submitUrl = l(['/xhr/units/', uId].join('')),
-        reqData = $('#translate').serializeObject(),
-        newTranslation = $('.js-translation-area')[0].value,
-        suggestions = $('.js-user-suggestion').map(function () {
-            return {
-              text: $(this).data('translation-aid'),
-              id: this.id
-            };
-          }).get(),
-        captchaCallbacks = {
-          sfn: 'PTL.editor.processSubmission',
-          efn: 'PTL.editor.error'
-        };
+    const body = $('#translate').serializeObject();
 
-    PTL.editor.updateUnitDefaultProperties();
+    this.updateUnitDefaultProperties();
 
     // Check if the string being submitted is already in the set of
     // suggestions
     // FIXME: this is LAME, I wanna die: we need to use proper models!!
-    var suggestionIds = _.pluck(suggestions, 'id'),
-        suggestionTexts = _.pluck(suggestions, 'text'),
-        suggestionIndex = suggestionTexts.indexOf(newTranslation);
+    const suggestionIds = _.pluck(suggestions, 'id');
+    const suggestionTexts = _.pluck(suggestions, 'text');
+    const suggestionIndex = suggestionTexts.indexOf(newTranslation);
 
-    if (suggestionIndex !== -1 && !PTL.editor.isFuzzy()) {
-      $(['#', suggestionIds[suggestionIndex]].join(''))
-        .find('.js-suggestion-accept').trigger('click', [true]);
+    if (suggestionIndex !== -1 && !this.isFuzzy()) {
+      this.acceptSuggestion(suggestionIds[suggestionIndex], { skipToNext: true });
       return;
     }
 
     // If similarities were in the process of being calculated by the time
     // the submit button was clicked, clear the timer and calculate them
     // straight away
-    if (PTL.editor.similarityTimer !== null) {
-      clearTimeout(PTL.editor.similarityTimer);
-      PTL.editor.checkSimilarTranslations();
+    if (this.similarityTimer !== null) {
+      clearTimeout(this.similarityTimer);
+      this.checkSimilarTranslations();
     }
 
-    $.extend(reqData, PTL.editor.getReqData(), PTL.editor.getSimilarityData(),
-             captchaCallbacks);
+    assign(body, this.getReqData(), this.getSimilarityData(), captchaCallbacks);
 
     el.disabled = true;
 
-    $.ajax({
-      url: submitUrl,
-      type: 'POST',
-      data: reqData,
-      dataType: 'json',
-      success: PTL.editor.processSubmission,
-      error: PTL.editor.error
-    });
+    UnitAPI.addTranslation(this.units.getCurrent().id, body)
+      .then(
+        (data) => this.processSubmission(data),
+        this.error
+      );
   },
 
-  processSubmission: function (data) {
+  processSubmission(data) {
     // FIXME: handle this via events
-    var translations = $('.js-translation-area').map(function (i, el) {
-      return $(el).val();
-    }).get();
+    const translations = $('.js-translation-area').map((i, el) => $(el).val())
+                                                  .get();
 
-    var unit = PTL.editor.units.getCurrent();
+    const unit = this.units.getCurrent();
     unit.setTranslation(translations);
-    unit.set('isfuzzy', PTL.editor.isFuzzy());
+    unit.set('isfuzzy', this.isFuzzy());
 
-    let hasCriticalChecks = !!data.checks;
+    const hasCriticalChecks = !!data.checks;
     $('.translate-container').toggleClass('error', hasCriticalChecks);
 
     if (data.user_score) {
@@ -1521,82 +1559,79 @@ PTL.editor = {
     if (hasCriticalChecks) {
       _refreshChecksSnippet(data.checks);
     } else {
-      PTL.editor.gotoNext();
+      this.gotoNext();
     }
   },
 
   /* Pushes translation suggestions and moves to the next unit */
-  suggest: function (e) {
-    e.preventDefault();
+  handleSuggest() {
+    const captchaCallbacks = {
+      sfn: 'PTL.editor.processSuggestion',
+      efn: 'PTL.editor.error',
+    };
 
-    var uId = PTL.editor.units.getCurrent().id,
-        suggestUrl = l(['/xhr/units/', uId, '/suggestions/'].join('')),
-        reqData = $('#translate').serializeObject(),
-        captchaCallbacks = {
-          sfn: 'PTL.editor.processSuggestion',
-          efn: 'PTL.editor.error'
-        };
+    const body = $('#translate').serializeObject();
 
-    PTL.editor.updateUnitDefaultProperties();
+    this.updateUnitDefaultProperties();
 
     // in suggest mode, do not send the fuzzy state flag
     // even if it is set in the form internally
-    delete reqData.state;
+    delete body.state;
 
-    $.extend(reqData, PTL.editor.getReqData(), PTL.editor.getSimilarityData(),
-             captchaCallbacks);
+    assign(body, this.getReqData(), this.getSimilarityData(), captchaCallbacks);
 
-    $.ajax({
-      url: suggestUrl,
-      type: 'POST',
-      data: reqData,
-      dataType: 'json',
-      success: PTL.editor.processSuggestion,
-      error: PTL.editor.error
-    });
+    UnitAPI.addSuggestion(this.units.getCurrent().id, body)
+      .then(
+        (data) => this.processSuggestion(data),
+        this.error
+      );
   },
 
-  processSuggestion: function (data) {
+  processSuggestion(data) {
     if (data.user_score) {
       score.set(data.user_score);
     }
 
-    PTL.editor.gotoNext();
+    this.gotoNext();
   },
 
 
   /* Loads the previous unit */
-  gotoPrev: function () {
+  gotoPrev() {
     if (!this.canNavigate()) {
       return false;
     }
 
-    var newUnit = this.units.prev();
+    const newUnit = this.units.prev();
     if (newUnit) {
-      var newHash = utils.updateHashPart('unit', newUnit.id);
+      const newHash = utils.updateHashPart('unit', newUnit.id);
       $.history.load(newHash);
+      this.setOffset(newUnit.id);
     }
+    return true;
   },
 
+
   /* Loads the next unit */
-  gotoNext: function (opts={isSubmission: true}) {
+  gotoNext(opts = { isSubmission: true }) {
     if (!this.canNavigate()) {
       return false;
     }
-
-    var newUnit = this.units.next();
+    const newUnit = this.units.next();
     if (newUnit) {
-      var newHash = utils.updateHashPart('unit', newUnit.id);
+      const newHash = utils.updateHashPart('unit', newUnit.id);
       $.history.load(newHash);
+      this.setOffset(newUnit.id);
     } else if (opts.isSubmission) {
-      var backLink = $('.js-back-to-browser').attr('href');
-      window.location.href = [backLink, 'finished'].join('?');
+      cookie('finished', '1', { path: '/' });
+      window.location.href = this.backToBrowserEl.getAttribute('href');
     }
+    return true;
   },
 
 
   /* Loads the editor with a specific unit */
-  gotoUnit: function (e) {
+  gotoUnit(e) {
     e.preventDefault();
 
     if (!PTL.editor.canNavigate()) {
@@ -1605,61 +1640,68 @@ PTL.editor = {
 
     // Ctrl + click / Alt + click / Cmd + click / Middle click opens a new tab
     if (e.ctrlKey || e.altKey || e.metaKey || e.which === 2) {
-      var $el = e.target.nodeName !== 'TD' ?
+      const $el = e.target.nodeName !== 'TD' ?
                   $(e.target).parents('td') :
                   $(e.target);
       window.open($el.data('target'), '_blank');
-      return;
+      return false;
     }
 
     // Don't load anything if we're just selecting text
     if (window.getSelection().toString() !== '') {
-      return;
+      return false;
     }
 
     // Get clicked unit's uid from the row's id information and
     // try to load it
-    var m = this.id.match(/(row|ctx)([0-9]+)/);
+    const m = this.id.match(/(row|ctx)([0-9]+)/);
     if (m) {
-      var newHash,
-          type = m[1],
-          uid = parseInt(m[2], 10);
+      const type = m[1];
+      const uid = parseInt(m[2], 10);
+      let newHash;
       if (type === 'row') {
-        newHash = utils.updateHashPart("unit", uid);
+        newHash = utils.updateHashPart('unit', uid);
       } else {
-        newHash = ['unit=', encodeURIComponent(uid)].join('');
+        newHash = `unit=${encodeURIComponent(uid)}`;
       }
       $.history.load(newHash);
+      PTL.editor.setOffset(uid);
     }
+    return true;
   },
 
-  /* FIXME: `unitIndex` and `gotoIndex` should part of a view on its own */
-
   /* Selects the element's contents and sets the focus */
-  unitIndex: function (e) {
+  unitIndex(e) {
     e.preventDefault();
 
-    var el = $('.js-unit-index')[0],
-        selection = window.getSelection(),
-        range = document.createRange();
+    const selection = window.getSelection();
+    const range = document.createRange();
 
-    range.selectNodeContents(el);
+    range.selectNodeContents(this.unitIndexEl);
     selection.removeAllRanges();
     selection.addRange(range);
-    el.focus();
+    this.unitIndexEl.focus();
   },
 
   /* Loads the editor on a index */
-  gotoIndex: function (e) {
+  gotoIndex(e) {
     if (e.which === 13) { // Enter key
       e.preventDefault();
-      var index = parseInt($('.js-unit-index').text(), 10);
-
-      if (index && !isNaN(index) && index > 0 &&
-          index <= this.units.total) {
-        var uId = this.units.uIds[index-1],
-            newHash = utils.updateHashPart('unit', uId);
-        $.history.load(newHash);
+      const index = parseInt(this.unitIndexEl.textContent, 10) - 1;
+      if (!isNaN(index)) {
+        // if index is outside of current uids clear units first
+        if (index < this.initialOffset || index >= this.getOffsetOfLastUnit()) {
+          this.initialOffset = -1;
+          this.offset = 0;
+          this.offsetRequested = index + 1;
+          $.history.load(utils.updateHashPart(
+            'offset', this.getStartOfChunk(index), ['unit'])
+          );
+        } else if (index >= 0 && index <= this.units.total) {
+          const uId = this.units.uIds[(index - this.initialOffset)];
+          const newHash = utils.updateHashPart('unit', uId);
+          $.history.load(newHash);
+        }
       }
     }
   },
@@ -1669,62 +1711,58 @@ PTL.editor = {
    */
 
   /* Gets the failing check options for the current query */
-  getCheckOptions: function (options) {
-    var checksUrl = l('/xhr/stats/checks/'),
-        reqData = {
-          path: this.settings.pootlePath
-        };
-
-    $.ajax({
-      url: checksUrl,
-      data: reqData,
-      dataType: 'json',
-      success: options.success,
-      error: PTL.editor.error
-    });
+  getCheckOptions() {
+    StatsAPI.getChecks(this.settings.pootlePath)
+      .then(
+        (data) => this.appendChecks(data),
+        this.error
+      );
   },
 
   /* Loads units based on checks filtering */
-  filterChecks: function () {
-    if (PTL.editor.preventNavigation) {
-      return;
+  filterChecks() {
+    if (this.preventNavigation) {
+      return false;
     }
-    if (!PTL.editor.canNavigate()) {
+    if (!this.canNavigate()) {
       return false;
     }
 
-    var filterChecks = $('#js-filter-checks').val();
+    const filterChecks = this.$filterChecks.val();
 
     if (filterChecks !== 'none') {
-      var sortBy = $('#js-filter-sort').val(),
-          newHash = {
-            filter: 'checks',
-            checks: filterChecks
-          };
+      const sortBy = this.$filterSortBy.val();
+      const newHash = {
+        filter: 'checks',
+        checks: filterChecks,
+      };
 
-      sortBy !== 'default' && (newHash.sort = sortBy);
+      if (sortBy !== 'default') {
+        newHash.sort = sortBy;
+      }
 
       $.history.load($.param(newHash));
     }
+    return true;
   },
 
   /* Adds the failing checks to the UI */
-  appendChecks: function (checks) {
+  appendChecks(checks) {
     if (Object.keys(checks).length) {
-      var $checks = $('#js-filter-checks'),
-          selectedValue = PTL.editor.checks[0] || 'none';
+      const $checks = this.$filterChecks;
+      const selectedValue = this.checks[0] || 'none';
 
-      $checks.find('optgroup').each(function (e) {
-        var empty = true,
-            $gr = $(this);
+      $checks.find('optgroup').each(function displayGroups() {
+        const $gr = $(this);
+        let empty = true;
 
-        $gr.find('option').each(function (e) {
-          var $opt = $(this),
-              value = $opt.val();
+        $gr.find('option').each(function displayOptions() {
+          const $opt = $(this);
+          const value = $opt.val();
 
           if (value in checks) {
             empty = false;
-            $opt.text($opt.data('title') + '(' + checks[value] + ')');
+            $opt.text(`${$opt.data('title')}(${checks[value]})`);
           } else {
             $opt.remove();
           }
@@ -1736,22 +1774,22 @@ PTL.editor = {
       });
 
       $checks.select2(filterSelectOpts).select2('val', selectedValue);
-      $('.js-filter-checks-wrapper').css('display', 'inline-block');
+      this.$filterChecksWrapper.css('display', 'inline-block');
     } else { // No results
-      PTL.editor.displayMsg({body: gettext("No results.")});
-      $('#js-filter-status').select2('val', PTL.editor.filter);
+      this.displayMsg({ body: gettext('No results.') });
+      this.$filterStatus.select2('val', this.filter);
     }
   },
 
-  filterSort: function () {
-    const filterBy = $('#js-filter-status').val();
+  filterSort() {
+    const filterBy = this.$filterStatus.val();
     // #104: Since multiple values can't be selected in the select
     // element, we also need to check for `this.checks`.
-    const filterChecks = $('#js-filter-checks').val() || this.checks.join(',');
-    const sortBy = $('#js-filter-sort').val();
+    const filterChecks = this.$filterChecks.val() || this.checks.join(',');
+    const sortBy = this.$filterSortBy.val();
     const user = this.user || null;
 
-    let newHash = { filter: filterBy };
+    const newHash = { filter: filterBy };
 
     if (this.category.length) {
       newHash.category = this.category;
@@ -1759,247 +1797,226 @@ PTL.editor = {
       newHash.checks = filterChecks;
     }
 
-    sortBy !== 'default' && (newHash.sort = sortBy);
-    user !== null && (newHash.user = user);
+    if (sortBy !== 'default') {
+      newHash.sort = sortBy;
+    }
+    if (user !== null) {
+      newHash.user = user;
+    }
 
     $.history.load($.param(newHash));
   },
 
 
   /* Loads units based on filtering */
-  filterStatus: function () {
-    if (!PTL.editor.canNavigate()) {
+  filterStatus() {
+    if (!this.canNavigate()) {
       return false;
     }
 
     // this function can be executed in different contexts,
     // so using the full selector here
-    var $selected = $('#js-filter-status option:selected'),
-        filterBy = $selected.val(),
-        isUserFilter = $selected.data('user'),
-        $checksWrapper = $('.js-filter-checks-wrapper');
+    const $selected = this.$filterStatus.find('option:selected');
+    const filterBy = $selected.val();
 
-    if (filterBy === "checks") {
-      PTL.editor.getCheckOptions({
-        success: PTL.editor.appendChecks
-      });
+    if (filterBy === 'checks') {
+      this.getCheckOptions();
     } else { // Normal filtering options (untranslated, fuzzy...)
-      $checksWrapper.hide();
+      this.$filterChecksWrapper.hide();
 
-      if (!PTL.editor.preventNavigation) {
-        var newHash = {filter: filterBy};
+      if (!this.preventNavigation) {
+        const newHash = { filter: filterBy };
+        const isUserFilter = $selected.data('user');
 
-        if (PTL.editor.user && isUserFilter) {
-          newHash.user = PTL.editor.user;
+        if (this.user && isUserFilter) {
+          newHash.user = this.user;
         } else {
-          PTL.editor.user = null;
-          $(".js-user-filter").remove();
+          this.user = null;
+          $('.js-user-filter').remove();
 
-          PTL.editor.sortBy !== 'default' && (newHash.sort = PTL.editor.sortBy);
+          if (this.sortBy !== 'default') {
+            newHash.sort = this.sortBy;
+          }
         }
 
         $.history.load($.param(newHash));
       }
     }
+    return true;
   },
 
   /* Generates the edit context rows' UI */
-  editCtxUI: function (opts) {
-    var defaults = {hasData: false, replace: false};
-    opts = $.extend({}, defaults, opts);
-
-    var editCtxRowBefore = PTL.editor.tmpl.editCtx({
-      hasData: opts.hasData,
-      extraCls: 'before'
+  renderCtxControls({ hasData = false }) {
+    const ctxRowBefore = this.tmpl.editCtx({
+      hasData,
+      extraCls: 'before',
     });
-    var editCtxRowAfter = PTL.editor.tmpl.editCtx({
-      hasData: opts.hasData,
-      extraCls: 'after'
+    const ctxRowAfter = this.tmpl.editCtx({
+      hasData,
+      extraCls: 'after',
     });
 
-    if (opts.replace) {
-      $("tr.edit-ctx.before").replaceWith(editCtxRowBefore);
-      $("tr.edit-ctx.after").replaceWith(editCtxRowAfter);
+    return [ctxRowBefore, ctxRowAfter];
+  },
+
+  replaceCtxControls(ctx) {
+    const [ctxRowBefore, ctxRowAfter] = ctx;
+
+    $('tr.edit-ctx.before').replaceWith(ctxRowBefore);
+    $('tr.edit-ctx.after').replaceWith(ctxRowAfter);
+  },
+
+  handleContextSuccess(data) {
+    if (!data.ctx.before.length && !data.ctx.after.length) {
+      return undefined;
     }
 
-    return [editCtxRowBefore, editCtxRowAfter];
+    // As we now have got more context rows, increase its gap
+    this.ctxGap += Math.max(data.ctx.before.length,
+                            data.ctx.after.length);
+    cookie('ctxQty', this.ctxGap, { path: '/' });
+
+    // Create context rows HTML
+    const before = this.renderCtxRows(data.ctx.before, 'before');
+    const after = this.renderCtxRows(data.ctx.after, 'after');
+
+    // Append context rows to their respective places
+    const editCtxRows = $('tr.edit-ctx');
+    editCtxRows.first().after(before);
+    editCtxRows.last().before(after);
+    return undefined;
   },
 
   /* Gets more context units */
-  moreContext: function (initial) {
-    var ctxUrl = l(['/xhr/units/', PTL.editor.units.getCurrent().id, '/context/'].join('')),
-        reqData = {gap: PTL.editor.ctxGap};
-
-    reqData.qty = initial ? PTL.editor.ctxQty : PTL.editor.ctxStep;
-
-    // Don't waste a request if nothing is expected initially
-    if (initial && reqData.qty === 0) {
-      return;
-    }
-
-    $.ajax({
-      url: ctxUrl,
-      async: false,
-      dataType: 'json',
-      data: reqData,
-      success: function (data) {
-        if (data.ctx.before.length || data.ctx.after.length) {
-          // As we now have got more context rows, increase its gap
-          if (initial) {
-            PTL.editor.ctxGap = Math.max(data.ctx.before.length,
-                                         data.ctx.after.length);
-          } else {
-            PTL.editor.ctxGap += Math.max(data.ctx.before.length,
-                                          data.ctx.after.length);
-          }
-          $.cookie('ctxQty', PTL.editor.ctxGap, {path: '/'});
-
-          // Create context rows HTML
-          var before = PTL.editor.buildCtxRows(data.ctx.before, "before"),
-              after = PTL.editor.buildCtxRows(data.ctx.after, "after");
-
-          // Append context rows to their respective places
-          var editCtxRows = $("tr.edit-ctx");
-          editCtxRows.first().after(before);
-          editCtxRows.last().before(after);
-        }
-      },
-      error: PTL.editor.error
-    });
+  moreContext(amount = CTX_STEP) {
+    return (
+      UnitAPI.getContext(this.units.getCurrent().id,
+                         { gap: this.ctxGap, qty: amount })
+        .then(
+          (data) => this.handleContextSuccess(data),
+          this.error
+        )
+    );
   },
 
   /* Shrinks context lines */
-  lessContext: function () {
-
-    var before = $(".ctx-row.before"),
-        after = $(".ctx-row.after");
+  lessContext() {
+    const $before = $('.ctx-row.before');
+    const $after = $('.ctx-row.after');
 
     // Make sure there are context rows before decreasing the gap and
     // removing any context rows
-    if (before.length || after.length) {
-      if (before.length === PTL.editor.ctxGap) {
-        before.slice(0, PTL.editor.ctxStep).remove();
+    if ($before.length || $after.length) {
+      if ($before.length === this.ctxGap) {
+        $before.slice(0, CTX_STEP).remove();
       }
 
-      if (after.length === PTL.editor.ctxGap) {
-        after.slice(-PTL.editor.ctxStep).remove();
+      if ($after.length === this.ctxGap) {
+        $after.slice(-CTX_STEP).remove();
       }
 
-      PTL.editor.ctxGap -= PTL.editor.ctxStep;
+      this.ctxGap -= CTX_STEP;
 
-      if (PTL.editor.ctxGap >= 0) {
-        if (PTL.editor.ctxGap === 0) {
-          PTL.editor.editCtxUI({hasData: false, replace: true});
-          $.cookie('ctxShow', false, {path: '/'});
+      if (this.ctxGap >= 0) {
+        if (this.ctxGap === 0) {
+          this.replaceCtxControls(this.renderCtxControls({ hasData: false }));
         }
 
-        $.cookie('ctxQty', PTL.editor.ctxGap, {path: '/'});
+        cookie('ctxQty', this.ctxGap, { path: '/' });
       }
     }
   },
 
   /* Shows context rows */
-  showContext: function () {
+  showContext() {
+    const $before = $('.ctx-row.before');
+    const $after = $('.ctx-row.after');
 
-    var editCtxRowBefore, editCtxRowAfter,
-        before = $(".ctx-row.before"),
-        after = $(".ctx-row.after");
-
-    if (before.length || after.length) {
-      before.show();
-      after.show();
-    } else {
-      PTL.editor.moreContext(true);
+    if ($before.length || $after.length) {
+      $before.show();
+      $after.show();
+      this.replaceCtxControls(this.renderCtxControls({ hasData: true }));
+    } else if (this.ctxQty > 0) {
+      // This is an initial request for context, reset `ctxGap`
+      this.ctxGap = 0;
+      this.moreContext(this.ctxQty)
+          .then(() => {
+            this.replaceCtxControls(this.renderCtxControls({ hasData: true }));
+          });
     }
-
-    PTL.editor.editCtxUI({hasData: true, replace: true});
-    $.cookie('ctxShow', true, {path: '/'});
   },
 
   /* Hides context rows */
-  hideContext: function () {
+  hideContext() {
+    const $before = $('.ctx-row.before');
+    const $after = $('.ctx-row.after');
 
-    var editCtxRowBefore, editCtxRowAfter,
-        before = $(".ctx-row.before"),
-        after = $(".ctx-row.after");
+    $before.hide();
+    $after.hide();
 
-    before.hide();
-    after.hide();
-
-    PTL.editor.editCtxUI({hasData: false, replace: true});
-    $.cookie('ctxShow', false, {path: '/'});
+    this.replaceCtxControls(this.renderCtxControls({ hasData: false }));
   },
 
 
   /* Loads the search view */
-  onSearch: function (searchText) {
+  onSearch(searchText) {
     if (!PTL.editor.canNavigate()) {
       return false;
     }
 
-    var newHash;
+    let newHash;
 
     if (searchText) {
-      let queryString = this.buildSearchQuery();
-      newHash = "search=" + queryString;
+      const queryString = this.buildSearchQuery();
+      newHash = `search=${queryString}`;
     } else {
-      newHash = utils.updateHashPart("filter", "all", ["search", "sfields","soptions"]);
+      newHash = utils.updateHashPart('filter', 'all', ['search', 'sfields', 'soptions']);
     }
     $.history.load(newHash);
+    return true;
   },
 
 
   /*
    * Comments
    */
-  comment: function (e) {
+
+  addComment(e) {
     e.preventDefault();
+    this.updateCommentDefaultProperties();
 
-    PTL.editor.updateCommentDefaultProperties();
+    UnitAPI.addComment(this.units.getCurrent().id, $(e.target).serializeObject())
+      .then(
+        (data) => this.processAddComment(data),
+        this.error
+      );
+  },
 
-    var url = $(this).attr('action'),
-        reqData = $(this).serializeObject();
+  processAddComment(data) {
+    $('.js-editor-comment').removeClass('selected');
+    $('#editor-comment').fadeOut(200);
 
-    $.ajax({
-      url: url,
-      type: 'POST',
-      data: reqData,
-      success: function (data) {
-        $('.js-editor-comment').removeClass('selected');
-        $("#editor-comment").fadeOut(200);
+    if ($('#translator-comment').length) {
+      $(data.comment).hide().prependTo('#translator-comment').delay(200)
+        .animate({ height: 'show' }, 1000, 'easeOutQuad');
+    } else {
+      $(`<div id='translator-comment'>${data.comment}</div>`)
+        .prependTo('#extras-container').delay(200)
+        .hide().animate({ height: 'show' }, 1000, 'easeOutQuad');
+    }
 
-        if ($("#translator-comment").length) {
-          $(data.comment).hide().prependTo("#translator-comment").delay(200)
-                         .animate({height: 'show'}, 1000, 'easeOutQuad');
-        } else {
-          var commentHtml = '<div id="translator-comment">' + data.comment
-                          + '</div>';
-          $(commentHtml).prependTo("#extras-container").delay(200)
-                        .hide().animate({height: 'show'}, 1000, 'easeOutQuad');
-        }
-
-        helpers.updateRelativeDates();
-      },
-      error: PTL.editor.error
-    });
-
-    return false;
+    helpers.updateRelativeDates();
   },
 
   /* Removes last comment */
-  removeComment: function (e) {
+  removeComment(e) {
     e.preventDefault();
 
-    var url = $(this).data('url');
-
-    $.ajax({
-      url: url,
-      type: 'DELETE',
-      success: function () {
-        $('.js-comment-first').fadeOut(200);
-      },
-      error: PTL.editor.error
-    });
+    UnitAPI.removeComment(this.units.getCurrent().id)
+      .then(
+        () => $('.js-comment-first').fadeOut(200),
+        this.error
+      );
   },
 
 
@@ -2008,63 +2025,52 @@ PTL.editor = {
    */
 
   /* Get the timeline data */
-  showTimeline: function () {
-    // The results might already be there from earlier:
+  showTimeline() {
     const $results = $('#timeline-results');
     if ($results.length) {
       $results.slideDown(1000, 'easeOutQuad');
       return;
     }
 
-    var uid = PTL.editor.units.getCurrent().id,
-        node = $(".translate-container"),
-        timelineUrl = l(['/xhr/units/', uid, '/timeline/'].join(''));
+    const $node = $('.translate-container');
+    $node.spin();
 
-    node.spin();
-
-    // Always abort previous requests so we only get results for the
-    // current unit
-    if (PTL.editor.timelineReq !== null) {
-      PTL.editor.timelineReq.abort();
-    }
-
-    PTL.editor.timelineReq = $.ajax({
-      url: timelineUrl,
-      dataType: 'json',
-      success: function (data) {
-        var uid = data.uid;
-
-        if (data.timeline && uid === PTL.editor.units.getCurrent().id) {
-          if ($("#translator-comment").length) {
-            $(data.timeline).hide().insertAfter("#translator-comment")
-                            .slideDown(1000, 'easeOutQuad');
-          } else {
-            $(data.timeline).hide().prependTo("#extras-container")
-                            .slideDown(1000, 'easeOutQuad');
-          }
-
-          helpers.updateRelativeDates();
-
-          $('.timeline-field-body').filter(':not([dir])').bidi();
-          $("#js-show-timeline").addClass('selected');
-        }
-      },
-      complete: function () {
-        node.spin(false);
-      },
-      error: PTL.editor.error
-    });
+    UnitAPI.getTimeline(this.units.getCurrent().id)
+      .then(
+        (data) => this.renderTimeline(data),
+        this.error
+      )
+      .always(() => $node.spin(false));
   },
 
- /* Hide the timeline panel */
-  toggleTimeline: function (e) {
+  renderTimeline(data) {
+    const uid = data.uid;
+
+    if (data.timeline && uid === this.units.getCurrent().id) {
+      if ($('#translator-comment').length) {
+        $(data.timeline).hide().insertAfter('#translator-comment')
+                        .slideDown(1000, 'easeOutQuad');
+      } else {
+        $(data.timeline).hide().prependTo('#extras-container')
+                        .slideDown(1000, 'easeOutQuad');
+      }
+
+      helpers.updateRelativeDates();
+
+      $('.timeline-field-body').filter(':not([dir])').bidi();
+      $('#js-show-timeline').addClass('selected');
+    }
+  },
+
+  /* Hide the timeline panel */
+  toggleTimeline(e) {
     e.preventDefault();
     const $timelineToggle = $('#js-toggle-timeline');
     $timelineToggle.toggleClass('selected');
     if ($timelineToggle.hasClass('selected')) {
-      PTL.editor.showTimeline();
+      this.showTimeline();
     } else {
-      $("#timeline-results").slideUp(1000, 'easeOutQuad');
+      $('#timeline-results').slideUp(1000, 'easeOutQuad');
     }
   },
 
@@ -2074,394 +2080,236 @@ PTL.editor = {
    */
 
   /* Filters TM results and does some processing */
-  filterTMResults: function (results, sourceText) {
+  filterTMResults(results, sourceText) {
     // FIXME: this just retrieves the first three results
     // we could limit based on a threshold too.
-    var filtered = [];
+    const filtered = [];
 
+    // FIXME: move this side-effect elsewhere
     if (results.length > 0 && results[0].source === sourceText) {
-      var $element = $(PTL.editor.focused);
+      const $element = $(this.focused);
       // set only if the textarea is empty
       if ($element.val() === '') {
-        var text = results[0].target;
+        const text = results[0].target;
         $element.val(text).trigger('input');
         $element.caret(text.length, text.length);
-        PTL.editor.goFuzzy();
+        this.goFuzzy();
       }
     }
 
-    for (var i=0; i<results.length && i<3; i++) {
-      if (results[i].username === 'nobody') {
-        results[i].fullname = gettext('some anonymous user');
-      } else if (!results[i].fullname) {
-        results[i].fullname = gettext('someone');
+    for (let i = 0; i < results.length && i < 3; i++) {
+      const result = results[i];
+      let fullname;
+      if (result.username === 'nobody') {
+        fullname = gettext('some anonymous user');
+      } else if (!result.fullname) {
+        fullname = result.username ? result.username : gettext('someone');
       }
-      results[i].fullname = _.escape(results[i].fullname);
+      result.fullname = _.escape(fullname);
 
-      filtered.push(results[i]);
+      filtered.push(result);
     }
 
     return filtered;
   },
 
   /* TM suggestions */
-  getTMUnitsContent: function (data) {
-    var unit = this.units.getCurrent(),
-        store = unit.get('store'),
-        src = store.get('source_lang'),
-        tgt = store.get('target_lang'),
-        sourceText = unit.get('source')[0],
-        filtered = PTL.editor.filterTMResults(data, sourceText),
-        name = gettext("Similar translations");
+  getTMUnitsContent(data) {
+    const unit = this.units.getCurrent();
+    const store = unit.get('store');
+    const sourceText = unit.get('source')[0];
+    const filtered = this.filterTMResults(data, sourceText);
+    const name = gettext('Similar translations');
 
     if (filtered.length) {
-      return PTL.editor.tmpl.tm({store: store.toJSON(),
-                                 unit: unit.toJSON(),
-                                 suggs: filtered,
-                                 name: name});
+      return this.tmpl.tm({
+        name,
+        store: store.toJSON(),
+        unit: unit.toJSON(),
+        suggs: filtered,
+      });
     }
 
     return '';
   },
 
   /* Gets TM suggestions from amaGama */
-  getTMUnits: function () {
-    var unit = this.units.getCurrent(),
-        store = unit.get('store'),
-        src = store.get('source_lang'),
-        tgt = store.get('target_lang'),
-        sText = unit.get('source')[0],
-        pStyle = store.get('project_style'),
-        tmUrl = this.settings.tmUrl + src + "/" + tgt +
-          "/unit/?source=" + encodeURIComponent(sText) + "&jsoncallback=?";
+  getTMUnits() {
+    const unit = this.units.getCurrent();
+    const store = unit.get('store');
+    const src = store.get('source_lang');
+    const tgt = store.get('target_lang');
+    const sText = unit.get('source')[0];
+    const pStyle = store.get('project_style');
+    let tmUrl = `${this.settings.tmUrl}${src}/${tgt}/unit/` +
+      `?source=${encodeURIComponent(sText)}`;
 
     if (!sText.length) {
-        // No use in looking up an empty string
-        return;
+      return;
     }
 
-    if (pStyle.length && pStyle != "standard") {
-        tmUrl += '&style=' + pStyle;
+    if (pStyle.length && pStyle !== 'standard') {
+      tmUrl += `&style=${pStyle}`;
     }
 
-    // Always abort previous requests so we only get results for the
-    // current unit
-    if (this.tmReq !== null) {
-      this.tmReq.abort();
+    fetch({ url: tmUrl, crossDomain: true })
+      .then(
+        (data) => this.handleTmResults(data, store, unit),
+        this.error
+      );
+  },
+
+  handleTmResults(data, store, unit) {
+    if (!data.length) {
+      return false;
     }
 
-    this.tmReq = $.jsonp({
-      url: tmUrl,
-      callback: '_jsonp' + unit.id,
-      dataType: 'jsonp',
-      cache: true,
-      success: function (data) {
-        var uid = this.callback.slice(6);
-
-        if (uid === unit.id && data.length) {
-          var sourceText = unit.get('source')[0],
-              filtered = PTL.editor.filterTMResults(data, sourceText),
-              name = gettext("Similar translations"),
-              tm = PTL.editor.tmpl.tm({store: store.toJSON(),
-                                       unit: unit.toJSON(),
-                                       suggs: filtered,
-                                       name: name});
-
-          $(tm).hide().appendTo("#extras-container")
-                      .slideDown(1000, 'easeOutQuad');
-        }
-      },
-      error: PTL.editor.error
+    const sourceText = unit.get('source')[0];
+    const filtered = PTL.editor.filterTMResults(data, sourceText);
+    const name = gettext('Similar translations');
+    const tm = PTL.editor.tmpl.tm({
+      name,
+      store: store.toJSON(),
+      unit: unit.toJSON(),
+      suggs: filtered,
     });
+
+    $(tm).hide().appendTo('#extras-container')
+                .slideDown(1000, 'easeOutQuad');
+    return true;
   },
 
 
   /* Rejects a suggestion */
-  rejectSuggestion: function (e) {
-    e.stopPropagation(); //we don't want to trigger a click on the text below
-    var suggId = $(this).data("sugg-id"),
-        element = $("#suggestion-" + suggId),
-        unit = PTL.editor.units.getCurrent();
+  rejectSuggestion(suggId) {
+    UnitAPI.rejectSuggestion(this.units.getCurrent().id, suggId)
+      .then(
+        (data) => this.processRejectSuggestion(data, suggId),
+        this.error
+      );
+  },
 
-    const url = l(`/xhr/units/${unit.id}/suggestions/${suggId}/`);
+  processRejectSuggestion(data, suggId) {
+    if (data.user_score) {
+      score.set(data.user_score);
+    }
 
-    $.ajax({
-      url: url,
-      type: 'DELETE',
-      success: (data) => {
-        if (data.user_score) {
-          score.set(data.user_score);
-        }
+    $(`#suggestion-${suggId}`).fadeOut(200, function handleRemove() {
+      $(this).remove();
 
-        element.fadeOut(200, function () {
-          $(this).remove();
-
-          // Go to the next unit if there are no more suggestions left
-          if (!$('.js-user-suggestion').length) {
-            PTL.editor.gotoNext();
-          }
-        });
-        $('.js-comment-first').fadeOut(200);
-      },
-      error: PTL.editor.error,
+      // Go to the next unit if there are no more suggestions left
+      if (!$('.js-user-suggestion').length) {
+        PTL.editor.gotoNext();
+      }
     });
   },
 
 
   /* Accepts a suggestion */
-  acceptSuggestion: function (e, skipToNext) {
-    e.stopPropagation(); //we don't want to trigger a click on the text below
-    var suggId = $(this).data("sugg-id"),
-        element = $("#suggestion-" + suggId),
-        unit = PTL.editor.units.getCurrent(),
-        skipToNext = skipToNext || false,
-        translations;
+  acceptSuggestion(suggId, { skipToNext = false } = {}) {
+    UnitAPI.acceptSuggestion(this.units.getCurrent().id, suggId)
+      .then(
+        (data) => this.processAcceptSuggestion(data, suggId, skipToNext),
+        this.error
+      );
+  },
 
-    const url = l(`/xhr/units/${unit.id}/suggestions/${suggId}/`);
-
-    $.ajax({
-      url: url,
-      type: 'POST',
-      success: (data) => {
-        // Update target textareas
-        $.each(data.newtargets, function (i, target) {
-          $("#id_target_f_" + i).val(target).focus();
-        });
-
-        // Update remaining suggestion's diff
-        $.each(data.newdiffs, function (suggId, sugg) {
-          $.each(sugg, function (i, target) {
-             $("#suggdiff-" + suggId + "-" + i).html(target);
-          });
-        });
-
-        // FIXME: handle this via events
-        translations = $('.js-translation-area').map(function (i, el) {
-          return $(el).val();
-        }).get();
-        unit.setTranslation(translations);
-        unit.set('isfuzzy', false);
-
-        if (data.user_score) {
-          score.set(data.user_score);
-        }
-
-        let hasCriticalChecks = !!data.checks;
-        $('.translate-container').toggleClass('error', hasCriticalChecks);
-        if (hasCriticalChecks) {
-          _refreshChecksSnippet(data.checks);
-        }
-
-        element.fadeOut(200, function () {
-          $(this).remove();
-
-          // Go to the next unit if there are no more suggestions left,
-          // providing there are no critical failing checks
-          if (!hasCriticalChecks &&
-              (skipToNext || !$('.js-user-suggestion').length)) {
-            PTL.editor.gotoNext();
-          }
-        });
-      },
-      error: PTL.editor.error,
+  processAcceptSuggestion(data, suggId, skipToNext) {
+    // Update target textareas
+    $.each(data.newtargets, (i, target) => {
+      $(`#id_target_f_${i}`).val(target).focus();
     });
 
+    // Update remaining suggestion's diff
+    $.each(data.newdiffs, (suggestionId, sugg) => {
+      $.each(sugg, (i, target) => {
+        $(`#suggdiff-${suggestionId}-${i}`).html(target);
+      });
+    });
+
+    // FIXME: handle this via events
+    const translations = $('.js-translation-area').map((i, el) => $(el).val())
+                                                  .get();
+    const unit = this.units.getCurrent();
+    unit.setTranslation(translations);
+    unit.set('isfuzzy', false);
+
+    if (data.user_score) {
+      score.set(data.user_score);
+    }
+
+    const hasCriticalChecks = !!data.checks;
+    $('.translate-container').toggleClass('error', hasCriticalChecks);
+    if (hasCriticalChecks) {
+      _refreshChecksSnippet(data.checks);
+    }
+
+    $(`#suggestion-${suggId}`).fadeOut(200, function handleRemove() {
+      $(this).remove();
+
+      // Go to the next unit if there are no more suggestions left,
+      // provided there are no critical failing checks
+      if (!hasCriticalChecks && (skipToNext || !$('.js-user-suggestion').length)) {
+        PTL.editor.gotoNext();
+      }
+    });
   },
 
   /* Mutes or unmutes a quality check marking it as false positive or not */
-  toggleCheck: function () {
-    var check = $(this).parent(),
-        checkId = $(this).data("check-id"),
-        uId = PTL.editor.units.getCurrent().id,
-        url = l(['/xhr/units/', uId, '/checks/', checkId, '/toggle/'].join('')),
-        falsePositive = !check.hasClass('false-positive'), // toggled value
-        post = {},
-        error;
+  toggleCheck(checkId) {
+    const $check = $(`.js-check-${checkId}`);
+    const isFalsePositive = !$check.hasClass('false-positive');
 
-    if (falsePositive) {
-      post.mute = 1;
-    }
+    UnitAPI.toggleCheck(this.units.getCurrent().id, checkId,
+                        { mute: isFalsePositive })
+      .then(
+        () => this.processToggleCheck(checkId, isFalsePositive),
+        this.error
+      );
+  },
 
-    $.post(url, post,
-      function (data) {
-        check.toggleClass('false-positive', falsePositive);
+  processToggleCheck(checkId, isFalsePositive) {
+    $(`.js-check-${checkId}`).toggleClass('false-positive', isFalsePositive);
 
-        error = $('#translate-checks-block .check')
-                  .not('.false-positive').size() > 0;
+    const hasError = $('#translate-checks-block .check')
+      .not('.false-positive').size() > 0;
 
-        $('.translate-container').toggleClass('error', error);
-      }, "json");
+    $('.translate-container').toggleClass('error', hasError);
   },
 
   /*
    * Machine Translation
    */
 
-  /* Checks whether the provided source is supported */
-  isSupportedSource: function (pairs, source) {
-    for (var i in pairs) {
-      if (source === pairs[i].source) {
-        return true;
-      }
+  runHooks() {
+    mtProviders.forEach((provider) => provider.init({
+      unit: this.units.getCurrent().toJSON(),
+    }));
+  },
+
+  /* FIXME: provide an alternative to such an ad-hoc entry point */
+  setTranslation(opts) {
+    const { translation } = opts;
+    if (translation === undefined && opts.msg) {
+      this.displayError(opts.msg);
+      return false;
     }
-    return false;
+
+    const area = document.querySelector('.js-translation-area');
+
+    area.value = decodeEntities(translation);
+    autosize.update(area);
+
+    // Save a copy of the resulting text in the DOM for further
+    // similarity comparisons
+    area.dataset.translationAidMt = translation;
+
+    area.dispatchEvent((new Event('input')));
+    area.focus();
+
+    this.goFuzzy();
+
+    return true;
   },
-
-
-  /* Checks whether the provided target is supported */
-  isSupportedTarget: function (pairs, target) {
-    for (var i in pairs) {
-      if (target === pairs[i].target) {
-        return true;
-      }
-    }
-    return false;
-  },
-
-
-  /* Checks whether the provided source-target pair is supported */
-  isSupportedPair: function (pairs, source, target) {
-    for (var i in pairs) {
-      if (source === pairs[i].source &&
-          target === pairs[i].target) {
-        return true;
-      }
-    }
-    return false;
-  },
-
-
-  /* Adds a new MT service button in the editor toolbar */
-  addMTButton: function (container, aClass, tooltip) {
-      var btn = '<a class="translate-mt ' + aClass + '">';
-      btn += '<i class="icon-' + aClass+ '" title="' + tooltip + '"><i/></a>';
-      $(container).first().prepend(btn);
-  },
-
-  /* Goes through all source languages and adds a new MT service button
-   * in the editor toolbar if the language is supported
-   */
-  addMTButtons: function (provider) {
-    if (this.isSupportedTarget(provider.pairs, PTL.editor.settings.targetLang)) {
-      var that = this,
-          $sources = $(".translate-toolbar"),
-          ok;
-
-      $sources.each(function () {
-        var source = that.normalizeCode($(this).parents('.source-language').find('.translation-text').attr("lang"));
-
-        if (provider.validatePairs) {
-          ok = that.isSupportedPair(provider.pairs, source, PTL.editor.settings.targetLang);
-        } else {
-          ok = that.isSupportedSource(provider.pairs, source);
-        }
-
-        if (ok) {
-          that.addMTButton($(this).find('.js-toolbar-buttons'),
-            provider.buttonClassName,
-            provider.hint + ' (' + source.toUpperCase() + '&rarr;' + PTL.editor.settings.targetLang.toUpperCase() + ')');
-        }
-      });
-    }
-  },
-
-  /* Normalizes language codes in order to use them in MT services */
-  normalizeCode: function (locale) {
-    if (locale) {
-      var clean = locale.replace('_', '-');
-      var atIndex = locale.indexOf('@');
-      if (atIndex !== -1) {
-        clean = clean.slice(0, atIndex);
-      }
-      return clean;
-    }
-    return locale;
-  },
-
-  collectArguments: function (s) {
-    this.argSubs[this.argPos] = s;
-    return "[" + (this.argPos++) + "]";
-  },
-
-  translate: function (linkObject, providerCallback) {
-    var that = this,
-        $areas = $('.js-translation-area'),
-        $sources = $(linkObject).parents('.source-language').find('.translation-text'),
-        langFrom = PTL.editor.normalizeCode($sources[0].lang),
-        langTo = PTL.editor.normalizeCode($areas[0].lang);
-
-    var htmlPat = /<[\/]?\w+.*?>/g,
-    // The printf regex based on http://phpjs.org/functions/sprintf:522
-        cPrintfPat = /%%|%(\d+\$)?([-+\'#0 ]*)(\*\d+\$|\*|\d+)?(\.(\*\d+\$|\*|\d+))?([scboxXuidfegEG])/g,
-        csharpStrPat = /{\d+(,\d+)?(:[a-zA-Z ]+)?}/g,
-        percentNumberPat = /%\d+/g,
-        pos = 0;
-
-    $sources.each(function (j) {
-      // Reset collected arguments array and counter
-      that.argSubs = [];
-      that.argPos = 0;
-
-      // Walk through known patterns and replace them with [N] placeholders
-      var sourceText = $(this).text()
-                              .replace(htmlPat,
-                                       that.collectArguments.bind(that))
-                              .replace(cPrintfPat,
-                                       that.collectArguments.bind(that))
-                              .replace(csharpStrPat,
-                                       that.collectArguments.bind(that))
-                              .replace(percentNumberPat,
-                                       that.collectArguments.bind(that));
-
-      providerCallback(sourceText, langFrom, langTo, function (opts) {
-        var translation = opts.translation,
-            msg = opts.msg,
-            area = $areas[j],
-            $area = $areas.eq(j),
-            i, value;
-
-        if (translation === undefined && msg) {
-          PTL.editor.displayError(msg);
-          return;
-        }
-
-        // Fix whitespace which may have been added around [N] blocks
-        for (i=0; i<that.argSubs.length; i++) {
-          if (sourceText.match(new RegExp("\\[" + i + "\\][^\\s]"))) {
-            translation = translation.replace(
-              new RegExp("\\[" + i + "\\]\\s+"), "[" + i + "]"
-            );
-          }
-          if (sourceText.match(new RegExp("[^\\s]\\[" + i + "\\]"))) {
-            translation = translation.replace(
-              new RegExp("\\s+\\[" + i + "\\]"), "[" + i + "]"
-            );
-          }
-        }
-
-        // Replace temporary [N] placeholders back to their real values
-        for (i=0; i<that.argSubs.length; i++) {
-          value = that.argSubs[i].replace(/\&/g, '&amp;')
-                                 .replace(/\</g, '&lt;')
-                                 .replace(/\>/g, '&gt;');
-          translation = translation.replace("[" + i + "]", value);
-        }
-
-        $area.val($('<div />').html(translation).text());
-        autosize.update(area);
-
-        // Save a copy of the resulting text in the DOM for further
-        // similarity comparisons
-        if (opts.storeResult) {
-          $area.attr('data-translation-aid-mt', translation);
-        }
-      });
-    });
-
-    $areas.eq(0).trigger('input').focus();
-
-    PTL.editor.goFuzzy();
-    return false;
-  }
 
 };

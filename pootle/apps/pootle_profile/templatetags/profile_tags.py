@@ -9,8 +9,10 @@
 
 from django import template
 
+
 register = template.Library()
 
+
 @register.filter
-def gravatar(profile, size):
-    return profile.gravatar_url(size)
+def gravatar(user, size):
+    return user.gravatar_url(size)

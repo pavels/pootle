@@ -16,16 +16,20 @@
   </a>
 
   <div class="path-summary-more" id="js-path-summary-more">
-    <div class="hd">
-      <h3><span>{% trans "Translation Statistics" %}</span></h3>
-    </div>
+    <h3>{% trans "Translation Statistics" %}</h3>
     <div class="bd">
       <table class="stats" lang="{{ LANGUAGE_CODE }}" dir="{% locale_dir %}">
         <tbody>
           {% for item in translation_states %}
           <tr id="stats-{{ item.state }}">
             <td id="stats-name">{{ item.title }}</td>
-            <td class="stats-number"><a href="{{ item.url }}"></a></td>
+            <td class="stats-number">
+              {% if can_translate_stats %}
+              <a href="{{ item.url }}" class="stats-data"></a>
+              {% else %}
+              <span class="stats-data"></span>
+              {% endif %}
+            </td>
             <td class="stats-percentage"><span></span>%</td>
           </tr>
           {% endfor %}
@@ -47,17 +51,20 @@
       </table>
     </div>
     <div id="js-stats-checks" class="hide stats-checks">
-      <div class="hd">
-        <h3><span>{% trans "Failing Checks" %}</span></h3>
-      </div>
+      <h3>{% trans "Failing Checks" %}</h3>
       <div class="bd">
       {% for item in check_categories %}
         <div id="check-{{ item.name }}" class="checks js-checks">
           <h4 class="clear">{{ item.title }}</h4>
           {% for check in item.checks %}
           <div class="check js-check" data-code="{{ check.code }}">
-            <div class="check-name"><a href="{{ check.url }}">{{ check.title }}</a></div>
-            <div class="check-count"><a href="{{ check.url }}">0</a></div>
+            {% if can_translate_stats %}
+            <div class="check-name"><a class="check-data" href="{{ check.url }}">{{ check.title }}</a></div>
+            <div class="check-count"><a class="check-data" href="{{ check.url }}">0</a></div>
+            {% else %}
+            <div class="check-name"><span class="check-data">{{ check.title }}</span></div>
+            <div class="check-count"><span class="check-data">0</span></div>
+            {% endif %}
           </div>
           {% endfor %}
         </div>
@@ -142,14 +149,6 @@ $(function () {
     isInitiallyExpanded: {{ is_store|yesno:"true,false" }},
     initialData: {{ stats|safe }},
   });
-
-  {% if 'finished' in request.GET %}
-  PTL.msg.show({
-    text: '{% trans "Congratulations! You have completed this task!" %}',
-    level: 'success',
-    language: '{{ LANGUAGE_CODE }}'
-  });
-  {% endif %}
 });
 </script>
 {% endblock %}

@@ -7,14 +7,17 @@
 # or later license. See the LICENSE file for a copy of the license and the
 # AUTHORS file for copyright and authorship information.
 
-import os
 import glob
+import os
+
 
 WORKING_DIR = os.path.abspath(os.path.dirname(__file__))
 
+
 def working_path(filename):
     """Return an absolute path for :param:`filename` by joining it to
-    ``WORKING_DIR``."""
+    ``WORKING_DIR``.
+    """
     return os.path.join(WORKING_DIR, filename)
 
 

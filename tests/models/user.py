@@ -14,12 +14,11 @@ import pytest
 
 from allauth.account.models import EmailAddress
 
+from pytest_pootle.fixtures.models.store import (_create_submission_and_suggestion,
+                                                 _create_comment_on_unit)
+
 import accounts
 from pootle_store.util import FUZZY, TRANSLATED
-
-from tests.fixtures.models.store import (TEST_EVIL_UPDATE_PO,
-                                         _create_submission_and_suggestion,
-                                         _create_comment_on_unit)
 
 
 def _make_evil_member_updates(store, evil_member):
@@ -31,13 +30,16 @@ def _make_evil_member_updates(store, evil_member):
     #   - adds a comment on unit
     #   - adds another unit
     member_suggestion = store.units[0].get_suggestions().first()
+    evil_units = [
+        ("Hello, world", "Hello, world EVIL"),
+        ("Goodbye, world", "Goodbye, world EVIL")]
     unit = store.units[0]
     unit.reject_suggestion(member_suggestion,
                            store.units[0].store.translation_project,
                            evil_member)
     _create_submission_and_suggestion(store,
                                       evil_member,
-                                      filename=TEST_EVIL_UPDATE_PO,
+                                      units=evil_units,
                                       suggestion="EVIL SUGGESTION")
     evil_suggestion = store.units[0].get_suggestions().first()
     store.units[0].accept_suggestion(evil_suggestion,
@@ -52,8 +54,10 @@ def _test_user_merged(unit, src_user, target_user):
         assert src_user.submitted.count() == 0
         assert src_user.suggestions.count() == 0
 
-    assert target_user.submitted.first() == unit
-    assert target_user.suggestions.first() == unit.get_suggestions().first()
+    assert unit in list(target_user.submitted.all())
+    assert (
+        unit.get_suggestions().first()
+        in list(target_user.suggestions.all()))
 
 
 def _test_before_evil_user_updated(store, member, teststate=False):
@@ -123,8 +127,8 @@ def _test_user_purging(store, member, evil_member, purge):
 
     unit = store.units[0]
 
-    # Test submitted/commented/reviewed times on the unit
-    # This is an unreliable test on mysql due to datetime precision
+    # Test submitted/commented/reviewed times on the unit.  This is an
+    # unreliable test on MySQL due to datetime precision
     if unit.submitted_on.time().microsecond != 0:
 
         # Times have changed
@@ -161,8 +165,13 @@ def test_merge_user(en_tutorial_po, member, member2):
 
 
 @pytest.mark.django_db
-def test_delete_user(en_tutorial_po, member, nobody):
+def test_delete_user(en_tutorial_po):
     """Test default behaviour of User.delete - merge to nobody"""
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+
+    member = User.objects.get(username="member")
+    nobody = User.objects.get(username="nobody")
     unit = _create_submission_and_suggestion(en_tutorial_po, member)
     member.delete()
     _test_user_merged(unit, member, nobody)
@@ -429,3 +438,44 @@ def test_update_user_email_bad_invalid_duplicate(member_with_email, member2):
     with pytest.raises(ValidationError):
         accounts.utils.update_user_email(member_with_email,
                                          "alt_email@this.test")
+
+
+@pytest.mark.django_db
+def test_user_has_manager_permissions(no_perms_user, administrate, tutorial,
+                                      afrikaans, afrikaans_tutorial):
+    """Test user `has_manager_permissions` method."""
+    from pootle_app.models.permissions import PermissionSet
+
+    # User has no permissions, so can't be manager.
+    assert not no_perms_user.has_manager_permissions()
+
+    # Assign 'administrate' right for 'Afrikaans (Tutorial)' TP and check user
+    # is manager.
+    criteria = {
+        'user': no_perms_user,
+        'directory': afrikaans_tutorial.directory,
+    }
+    ps, created = PermissionSet.objects.get_or_create(**criteria)
+    ps.positive_permissions = [administrate]
+    ps.save()
+    assert no_perms_user.has_manager_permissions()
+    ps.positive_permissions.clear()
+    assert not no_perms_user.has_manager_permissions()
+
+    # Assign 'administrate' right for 'Afrikaans' and check user is manager.
+    criteria['directory'] = afrikaans.directory
+    ps, created = PermissionSet.objects.get_or_create(**criteria)
+    ps.positive_permissions = [administrate]
+    ps.save()
+    assert no_perms_user.has_manager_permissions()
+    ps.positive_permissions.clear()
+    assert not no_perms_user.has_manager_permissions()
+
+    # Assign 'administrate' right for 'Tutorial' and check user is manager.
+    criteria['directory'] = tutorial.directory
+    ps, created = PermissionSet.objects.get_or_create(**criteria)
+    ps.positive_permissions = [administrate]
+    ps.save()
+    assert no_perms_user.has_manager_permissions()
+    ps.positive_permissions.clear()
+    assert not no_perms_user.has_manager_permissions()

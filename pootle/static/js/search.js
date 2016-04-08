@@ -6,18 +6,20 @@
  * AUTHORS file for copyright and authorship information.
  */
 
-'use strict';
-
 import $ from 'jquery';
-import 'jquery-cookie';
 import assign from 'object-assign';
 import 'shortcut';
 
+import cookie from 'utils/cookie';
 
-let search = {
+
+const SEARCH_COOKIE_NAME = 'pootle-search';
+
+
+const search = {
 
   init(options) {
-    var that = this;
+    const that = this;
 
     this.state = {
       searchText: '',
@@ -26,11 +28,11 @@ let search = {
     };
 
     /* Reusable selectors */
-    this.$form = $("#search-form");
-    this.$container = $(".js-search-container");
-    this.$fields = $(".js-search-fields");
-    this.$options = $(".js-search-options");
-    this.$input = $("#id_search");
+    this.$form = $('#search-form');
+    this.$container = $('.js-search-container');
+    this.$fields = $('.js-search-fields');
+    this.$options = $('.js-search-options');
+    this.$input = $('#id_search');
 
     this.settings = assign({
       onSearch: this.onSearch,
@@ -43,7 +45,7 @@ let search = {
     shortcut.add('escape', (e) => {
       if (this.$form.hasClass('focused')) {
         this.$input.blur();
-        toggleFields(e);
+        this.toggleFields(e);
       }
     });
 
@@ -59,18 +61,12 @@ let search = {
       this.$form.removeClass('focused');
     });
 
-    /* Dropdown toggling */
-    var toggleFields = function (event) {
-      event.preventDefault();
-      that.$container.toggle();
-    };
-
     /* Event handlers */
-    this.$input.click(function (e) {
+    this.$input.click((e) => {
       if (search.isOpen()) {
         return;
       }
-      toggleFields(e);
+      this.toggleFields(e);
     });
 
     this.$input.on('keypress', (e) => {
@@ -85,7 +81,7 @@ let search = {
       if (this.isOpen() &&
           e.target !== that.$input.get(0) &&
           !this.$container.find(e.target).length) {
-        toggleFields(e);
+        this.toggleFields(e);
       }
     });
   },
@@ -95,6 +91,12 @@ let search = {
     this.updateUI();
   },
 
+  /* Dropdown toggling */
+  toggleFields(event) {
+    event.preventDefault();
+    this.$container.toggle();
+  },
+
   /* Returns true if the search drop-down is open */
   isOpen() {
     return this.$container.is(':visible');
@@ -102,21 +104,20 @@ let search = {
 
   /* Builds search query hash string */
   buildSearchQuery() {
-    let {searchText, searchFields, searchOptions } = this.state;
+    const { searchText, searchFields, searchOptions } = this.state;
     let query = encodeURIComponent(searchText);
 
     // If any options have been chosen, append them to the resulting URL
     if (searchFields.length) {
-      query += "&sfields=" + searchFields.join(',');
+      query += `&sfields=${searchFields.join(',')}`;
     }
     if (searchOptions.length) {
-      query += "&soptions=" + searchOptions.join(',');
+      query += `&soptions=${searchOptions.join(',')}`;
     }
 
     if (searchFields.length || searchOptions.length) {
       // Remember field selection in a cookie
-      var cookieName = 'pootle-search',
-          cookieData = {};
+      const cookieData = {};
       if (searchFields.length) {
         cookieData.sfields = searchFields;
       }
@@ -124,7 +125,7 @@ let search = {
         cookieData.soptions = searchOptions;
       }
 
-      $.cookie(cookieName, JSON.stringify(cookieData), {path: '/'});
+      cookie(SEARCH_COOKIE_NAME, JSON.stringify(cookieData), { path: '/' });
     }
 
     return query;
@@ -133,14 +134,14 @@ let search = {
   handleSearch(e) {
     e.preventDefault();
 
-    let searchText = this.$input.val();
+    const searchText = this.$input.val();
+    const searchOptions = [];
     let searchFields = [];
-    let searchOptions = [];
 
-    this.$fields.find('input:checked').each(function () {
+    this.$fields.find('input:checked').each(function populateFields() {
       searchFields.push($(this).val());
     });
-    this.$options.find('input:checked').each(function () {
+    this.$options.find('input:checked').each(function populateOptions() {
       searchOptions.push($(this).val());
     });
 
@@ -149,9 +150,9 @@ let search = {
     }
 
     this.setState({
-      searchText: searchText,
-      searchFields: searchFields,
-      searchOptions: searchOptions,
+      searchText,
+      searchFields,
+      searchOptions,
     });
 
     this.settings.onSearch.call(this, this.state.searchText);
@@ -162,7 +163,7 @@ let search = {
       return false;
     }
 
-    let hash = "#search=" + this.buildSearchQuery();
+    const hash = `#search=${this.buildSearchQuery()}`;
     window.location = this.$form[0].action + hash;
 
     return false;
@@ -170,16 +171,16 @@ let search = {
 
   updateUI() {
     this.$input.val(this.state.searchText).focus();
-    let { searchFields, searchOptions } = this.state;
+    const { searchFields, searchOptions } = this.state;
 
-    this.$fields.find('input').each(function () {
+    this.$fields.find('input').each(function updateFieldsProps() {
       $(this).prop('checked', searchFields.indexOf(this.value) !== -1);
     });
 
-    this.$options.find('input').each(function () {
+    this.$options.find('input').each(function updateOptionsProps() {
       $(this).prop('checked', searchOptions.indexOf(this.value) !== -1);
     });
-  }
+  },
 
 };
 

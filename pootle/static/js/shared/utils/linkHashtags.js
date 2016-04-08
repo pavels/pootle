@@ -14,7 +14,7 @@ function linkToHashtag(tag) {
   const currentLocation = window.location.toString().split('#', 2)[0];
   const hashtag = encodeURIComponent(tag);
   return `${currentLocation}#search=${hashtag}&sfields=notes`;
-};
+}
 
 
 export default function linkHashtags(text) {
@@ -22,8 +22,7 @@ export default function linkHashtags(text) {
     return '';
   }
 
-  return text.replace(hashtagRE, (match, before, hashtag, offset, string) => {
-    return `${before}<a href="${linkToHashtag(hashtag)}">${hashtag}</a>`;
-  });
-
-};
+  return text.replace(hashtagRE, (match, before, hashtag) =>
+    `${before}<a href="${linkToHashtag(hashtag)}">${hashtag}</a>`
+  );
+}

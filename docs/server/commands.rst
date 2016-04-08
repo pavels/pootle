@@ -10,7 +10,7 @@ commands by issuing ``pootle <command> [options]``.
 For example, to get information about all available management commands, you
 will run:
 
-.. code-block:: bash
+.. code-block:: console
 
     $ pootle help
 
@@ -29,6 +29,8 @@ These commands will go through all existing projects performing maintenance
 tasks. The tasks are all available through the web interface but on a project
 by project or file by file basis.
 
+.. django-admin-option:: --project, --language
+
 The commands target can be limited in a more flexible way using the
 :option:`--project` :option:`--language` command line options. They can be
 repeated to indicate multiple languages or projects. If you use both options
@@ -37,20 +39,22 @@ selected.
 
 For example, to *refresh_stats* for the tutorial project only, run:
 
-.. code-block:: bash
+.. code-block:: console
 
     $ pootle refresh_stats --project=tutorial
 
 To only refresh a the Zulu and Basque language files within the tutorial
 project, run:
 
-.. code-block:: bash
+.. code-block:: console
 
     $ pootle refresh_stats --project=tutorial --language=zu --language=eu
 
 
 Running commands with --no-rq option
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. django-admin-option:: --no-rq
 
 .. versionadded:: 2.7.1
 
@@ -65,13 +69,15 @@ asynchronous jobs.
 For example, to run :djadmin:`refresh_stats` in the command process and wait
 for the process to terminate:
 
-.. code-block:: bash
+.. code-block:: console
 
     $ pootle refresh_stats --no-rq
 
 It is *not* generally safe to run commands in this mode if you have RQ workers
 active at the same time, as there is a risk that they conflict with other jobs
 dispatched to the workers.
+
+.. django-admin-option:: --noinput
 
 If there are RQ workers running, the command will ask for confirmation before
 proceeding. This can be overridden using the :option:`--noinput` flag, in
@@ -135,12 +141,71 @@ number of units you have in the database. If a user hits a page that needs to
 display stats but they haven't been calculated yet, then a message will be
 displayed indicating that the stats being calculated.
 
-Use the :option:`--check` option to force calculaton of a specified check.  To
+.. django-admin-option:: --check
+
+Use the :option:`--check` option to force calculation of a specified check.  To
 recalculate only the ``date_format`` quality checks, run:
 
-.. code-block:: bash
+.. code-block:: console
 
     $ pootle calculate_checks --check=date_format
+
+Multiple checks can be specifed in one run as well:
+
+.. code-block:: console
+
+    $ pootle calculate_checks --check=date_format --check=accelerators
+
+
+.. django-admin:: clear_stats
+
+clear_stats
+^^^^^^^^^^^
+
+.. versionadded:: 2.7
+
+Clear stats cache data.
+
+Make use of :djadmin:`clear_stats` in cases where you want to remove all stats
+data. Such a case may be where you want to recalculate stats after a change
+to checks or wordcount calculations.  While it should be fine to run
+:djadmin:`refresh_stats` or :djadmin:`calculate_checks`, by first running
+:djadmin:`clear_stats` you can be sure that the stats are calculated from
+scratch.
+
+
+.. django-admin:: flush_cache
+
+flush_cache
+^^^^^^^^^^^
+
+.. versionadded:: 2.8.0
+
+Flush cache.
+
+.. warning:: You must first **stop the workers** if you flush `stats`
+   or `redis` cache.
+
+.. django-admin-option:: --django-cache
+
+Use the :option:`--django-cache` to flush the ``default`` cache which keeps
+Django templates, project permissions etc.
+
+.. django-admin-option:: --rqdata
+
+Use the :option:`--rqdata` to flush all data contained in ``redis`` cache:
+pending jobs, dirty flags, revision (which will be automatically restored),
+all data from queues.
+
+.. django-admin-option:: --stats
+
+Use the :option:`--stats` to flush all stats data only (it works faster than
+:djadmin:`clear_stats` but it requires stopping the worker).
+
+.. django-admin-option:: --all
+
+Use the :option:`--all` to flush all caches (``default``, ``redis``, ``stats``)
+data.
 
 
 .. django-admin:: refresh_scores
@@ -151,6 +216,8 @@ refresh_scores
 .. versionadded:: 2.7
 
 Recalculates the scores for all users.
+
+.. django-admin-option:: --reset
 
 When the :option:`--reset` option is used , all score log data is removed and
 `zero` score is set for all users.
@@ -183,15 +250,18 @@ updating files, ignoring files that haven't change.
 The default behavior of :djadmin:`sync_stores` can be altered by specifying
 these parameters:
 
-:option:`--force`
+.. django-admin-option:: --force
+
   Synchronizes files even if nothing changed in the database.
 
-:option:`--overwrite`
+.. django-admin-option:: --overwrite
+
   Copies the current state of the DB stores (not only translations, but also
   metadata) regardless if they have been modified since the last sync or
   not. This operation will (over)write existing on-disk files.
 
-:option:`--skip-missing`
+.. django-admin-option:: --skip-missing
+
   Ignores files missing on disk, and no new files will be created.
 
 
@@ -231,11 +301,13 @@ directly on the file system.
 
 :djadmin:`update_stores` accepts several options:
 
-:option:`--force`
+.. django-admin-option:: --force
+
   Updates in-DB translations even if the on-disk file hasn't been changed
   since the last sync operation.
 
-:option:`--overwrite`
+.. django-admin-option:: --overwrite
+
   Mirrors the on-disk contents of the file. If there have been changes in
   the database **since the last sync operation**, these will be
   overwritten.
@@ -252,6 +324,8 @@ list_languages
 Lists all the language codes for languages hosted on the server. This can be
 useful for automation.
 
+.. django-admin-option:: --modified-since
+
 Accepts the :option:`--modified-since` parameter to list only those languages
 modified since the revision given by :djadmin:`revision`.
 
@@ -263,6 +337,8 @@ list_projects
 
 Lists all the project codes on the server. This might can be useful for
 automation.
+
+.. django-admin-option:: --modified-since
 
 Accepts the :option:`--modified-since` parameter to list only those projects
 modified since the revision given by :djadmin:`revision`.
@@ -278,8 +354,43 @@ contributors
 Lists the contributors to a language, project or overall and the amount
 of contributions they have.
 
-Accepts the :option:`--from-revision` parameter to only take into account
-contributions newer than the revision given by :djadmin:`revision`.
+Available options:
+
+.. django-admin-option:: --from-revision
+
+  Tells to only take into account contributions newer than the specified
+  revision.
+
+  Default: ``0``.
+
+.. django-admin-option:: --sort-by
+
+  .. versionadded:: 2.7.3
+
+  Specifies the sorting to be used. Valid options are ``contributions`` (sort
+  by decreasing number of contributions) and ``name`` (sort by user name,
+  alphabetically).
+
+  Default: ``name``.
+
+.. django-admin-option:: --only-emails
+
+  .. versionadded:: 2.8.0
+
+  Specifies to only output user names and emails. Users with no email are
+  skipped.
+
+.. django-admin-option:: --since
+
+  .. versionadded:: 2.8.0
+
+  Only consider contributions since the specified date. Date must be in ISO
+  8601 format (``2016-01-24T23:15:22+0000``) or be a string formatted like
+  ``"2016-01-24 23:15:22 +0000"`` (quotes included).
+
+  :option:`--since <contributors --since>` and
+  :option:`--from-revision <contributors --from-revision>` are mutually
+  exclusive.
 
 
 .. django-admin:: revision
@@ -294,6 +405,8 @@ Print the latest revision number.
 The revision is a common system-wide counter for units. It is incremented with
 every translation action made from the browser. Zero length units that have
 been auto-translated also increment the unit revision.
+
+.. django-admin-option:: --restore
 
 The revision counter is stored in the database but also in cache for faster
 retrieval. If for some reason the revision counter was removed or got
@@ -313,6 +426,8 @@ changed_languages
 Produces a comma-separated list of language codes that changed since the last
 sync operation.
 
+.. django-admin-option:: --after-revision
+
 When :option:`--after-revision` is specified with a revision number as an
 argument, it will print the language codes for languages that have changed
 since the specified revision.
@@ -328,12 +443,18 @@ test_checks
 Tests any given string pair or unit against all or certain checks from the
 command line. This is useful for debugging and developing new checks.
 
+.. django-admin-option:: --source, --target
+
 String pairs can be specified by setting the values to be checked in the
 ``--source=<"source_text">`` and ``--target="<target_text>"``
 command-line arguments.
 
+.. django-admin-option:: --unit
+
 Alternatively, ``--unit=<unit_id>`` can be used to reference an existing
 unit from the database.
+
+.. django-admin-option:: --check
 
 By default, :djadmin:`test_checks` tests all existing checks. When
 ``--check=<checkname>`` is set, only specific checks will be tested against.
@@ -349,7 +470,9 @@ dump
 Prints data or stats data (depending on :option:`--data` or :option:`--stats` option)
 in specific format.
 
-*data*::
+.. django-admin-option:: --data
+
+::
 
   object_id:class_name
   8276:Directory	name=android	parent=/uk/	pootle_path=/uk/android/
@@ -357,7 +480,9 @@ in specific format.
   806705:Unit	source=Create Account	target=Створити аккаунт	source_wordcount=2	target_wordcount=2	developer_comment=create_account	translator_commentlocations=File:\nstrings.xml\nID:\ne82a8ea14a0b9f92b1b67ebfde2c16e9	isobsolete=False	isfuzzy=False	istranslated=True
   115654:Suggestion	target_f=Необхідна електронна адреса	user_id=104481
 
-*stats*::
+.. django-admin-option:: --stats
+
+::
 
   pootle_path total,translated,fuzzy,suggestions,criticals,is_dirty,last_action_unit_id,last_updated_unit_id
   /uk/android/strings.xml.po  11126,10597,383,231,0,False,4710214,4735242
@@ -377,6 +502,7 @@ Translation Memory
 These commands allow you to setup and manage :doc:`Translation Memory
 </features/translation_memory>`.
 
+
 .. django-admin:: update_tmserver
 
 update_tmserver
@@ -384,17 +510,108 @@ update_tmserver
 
 .. versionadded:: 2.7
 
-Updates the ``default`` server in :setting:`POOTLE_TM_SERVER`.  The command
+.. versionchanged:: 2.7.3 Renamed ``--overwrite`` to :option:`--refresh`.
+   Disabled projects' translations are no longer added by default. It is also
+   possible to import translations from files.
+
+
+Updates the ``local`` server in :setting:`POOTLE_TM_SERVER`.  The command
 reads translations from the current Pootle install and builds the TM resources
 in the TM server.
 
-By default the command will only add new translations to the server.  To
-rebuild the server from scratch use :option:`--rebuild`, this will completely
-remove the TM and rebuild it.  To ensure that the TM server remains available
-when you rebuild you can add :option:`--overwrite`.
+If no options are provided, the command will only add new translations to the
+server.
+
+.. django-admin-option:: --refresh
+
+Use :option:`--refresh` to also update existing translations that have
+been changed, besides adding any new translation.
+
+.. django-admin-option:: --rebuild
+
+To completely remove the TM and rebuild it adding all existing translations use
+:option:`--rebuild`.
+
+.. django-admin-option:: --tm
+
+If no specific TM server is specified using :option:`--tm`, then the default
+``local`` TM will be used. If the specified TM server doesn't exist it will
+be automatically created for you.
+
+.. django-admin-option:: --include-disabled-projects
+
+By default translations from disabled projects are not added to the TM, but
+this can be changed by specifying :option:`--include-disabled-projects`.
+
+.. django-admin-option:: --dry-run
 
 To see how many units will be loaded into the server use :option:`--dry-run`,
-no actual data will be loaded.
+no actual data will be loaded or deleted (the TM will be left unchanged):
+
+.. code-block:: console
+
+    $ pootle update_tmserver --dry-run
+    $ pootle update_tmserver --refresh --dry-run
+    $ pootle update_tmserver --rebuild --dry-run
+
+
+This command also allows to read translations from files and build the TM
+resources in the external TM server. In order to do so it is mandatory to
+provide the :option:`--tm` and :option:`--display-name` options, along with
+some files to import.
+
+.. django-admin-option:: --display-name
+
+The display name is a label used to group translations within a TM. A given TM
+can host translations for several display names. The display name can be used
+to specify the name of the project from which the translations originate. The
+display name will be shown on TM matches in the translation editor. To specify
+a name use :option:`--display-name`:
+
+.. code-block:: console
+
+   (env) $ pootle update_tmserver --tm=libreoffice --display-name="LibreOffice 4.3 UI" TM_LibreOffice_4.3.gl.tmx
+
+
+By default the command will only add new translations to the server. To rebuild
+the server from scratch use :option:`--rebuild` to completely remove the TM and
+rebuild it before importing the translations:
+
+.. code-block:: console
+
+   (env) $ pootle update_tmserver --rebuild --tm=mozilla --display-name="Foo 1.7" foo.po
+
+
+Option :option:`--refresh` doesn't apply when adding translations from files
+on disk.
+
+To see how many units will be loaded into the server use :option:`--dry-run`,
+no actual data will be loaded:
+
+.. code-block:: console
+
+   (env) $ pootle update_tmserver --dry-run --tm=mozilla --display-name="Foo 1.7" foo.po
+   175045 translations to index
+
+
+This command is capable of importing translations in multiple formats from
+several files and directories at once:
+
+.. code-block:: console
+
+   (env) $ pootle update_tmserver --tm=mozilla --display-name="Foo 1.7" bar.tmx foo.xliff fr/
+
+
+.. django-admin-option:: --target-language
+
+Use :option:`--target-language` to specify the target language ISO code for the
+imported translations in case it is not possible to guess it from the
+translation files or if the code is incorrect:
+
+.. code-block:: console
+
+   (env) $ pootle update_tmserver --target-language=af --tm=mozilla --display-name="Foo 1.7" foo.po bar.tmx
+
 
 .. _commands#vfolders:
 
@@ -420,7 +637,7 @@ a virtual folder that fits your needs.
 
 This command requires a mandatory filename argument.
 
-.. code-block:: bash
+.. code-block:: console
 
     $ pootle add_vfolders virtual_folders.json
 
@@ -472,6 +689,16 @@ counter is older than on Pootle, that is someone has translated while the file
 was offline, then it will be rejected.  Otherwise the translations in the file
 are accepted.
 
+Available options:
+
+.. django-admin-option:: --user
+
+  .. versionadded:: 2.7.3
+
+  Import file(s) as given user. The user with the provided username must exist.
+
+  Default: ``system``.
+
 
 .. _commands#manually_installing_pootle:
 
@@ -490,12 +717,13 @@ Create the initial configuration for Pootle.
 
 Available options:
 
-:option:`--config`
+.. django-admin-option:: --config
   The configuration file to write to.
 
   Default: ``~/.pootle/pootle.conf``.
 
-:option:`--db`
+.. django-admin-option:: --db
+
   .. versionadded:: 2.7.1
 
   The database backend that you are using
@@ -503,7 +731,8 @@ Available options:
   Default: ``sqlite``.
   Available options: ``sqlite``, ``mysql``, ``postgresql``.
 
-:option:`--db-name`
+.. django-admin-option:: --db-name
+
   .. versionadded:: 2.7.1
 
   The database name or path to database file if you are using sqlite.
@@ -511,45 +740,28 @@ Available options:
   Default for sqlite: ``dbs/pootle.db``.
   Default for mysql/postgresql: ``pootledb``.
 
-:option:`--db-user`
+.. django-admin-option:: --db-user
+
   .. versionadded:: 2.7.1
 
   Name of the database user. Not used with sqlite.
 
   Default: ``pootle``.
 
-:option:`--db-host`
+.. django-admin-option:: --db-host
+
   .. versionadded:: 2.7.1
 
   Database host to connect to. Not used with sqlite.
 
   Default: ``localhost``.
 
-:option:`--db-port`
+.. django-admin-option:: --db-port
+
   .. versionadded:: 2.7.1
 
   Port to connect to database on. Defaults to database backend's default port.
   Not used with sqlite.
-
-
-.. _commands#migrate:
-
-migrate
-^^^^^^^
-
-.. versionchanged:: 2.7
-
-
-.. note::
-
-  Since the addition of the :command:`setup` management command it is not
-  necessary to directly run this command. Please refer to the :ref:`Upgrading
-  <upgrading>` or :ref:`Installation <installation>` instructions to see how to
-  run the :command:`setup` management command in those scenarios.
-
-
-This is Django's :djadmin:`django:migrate` command, which syncs the state of
-models with the DB and applies migrations for them.
 
 
 .. django-admin:: initdb
@@ -557,18 +769,25 @@ models with the DB and applies migrations for them.
 initdb
 ^^^^^^
 
-Initialises a new Pootle install.
+Initializes a new Pootle install.
 
-This is part an optional part of Pootle's install process, it creates the
-default *admin* user, populates the language table with several languages with
-their correct fields, initializes several terminology projects, and creates the
-tutorial project.
+This is an optional part of Pootle's install process, it creates the default
+*admin* user, populates the language table with several languages, initializes
+the terminology project, and creates the tutorial project among other tasks.
 
-:djadmin:`initdb` can only be run after :ref:`commands#migrate`.
+:djadmin:`initdb` can only be run after :djadmin:`django:migrate`.
 
-.. note:: :djadmin:`initdb` will not import translations into the database, so
-   the first visit to Pootle after :djadmin:`initdb` will be very slow. **It is
-   best to run** :djadmin:`refresh_stats` **immediately after initdb**.
+:djadmin:`initdb` accepts the following option:
+
+.. versionadded:: 2.7.3
+
+.. django-admin-option:: --no-projects
+
+   Don't create the default ``terminology`` and ``tutorial`` projects.
+
+.. note:: :djadmin:`initdb` will import translations into the database, so
+   can be slow to run. You should have an ``rqworker`` running or run with
+   the `--no-rq`.
 
 
 .. _commands#collectstatic:
@@ -579,9 +798,8 @@ collectstatic
 Running the Django admin :djadmin:`django:collectstatic` command finds and
 extracts static content such as images, CSS and JavaScript files used by the
 Pootle server, so that they can be served separately from a static webserver.
-Typically, this is run with the :option:`--clear` :option:`--noinput` options,
-to flush any existing static data and use default answers for the content
-finders.
+Typically, this is run with the ``--clear`` ``--noinput`` options, to flush any
+existing static data and use default answers for the content finders.
 
 
 .. _commands#assets:
@@ -607,6 +825,8 @@ bundle JavaScript scripts, and this management command is a convenient
 wrapper that sets everything up ready for production and makes sure to
 include any 3rd party customizations.
 
+.. django-admin-option:: --dev
+
 When the :option:`--dev` flag is enabled, development builds will be created
 and the process will start a watchdog to track any client-side scripts for
 changes. Use this only when developing Pootle.
@@ -630,7 +850,7 @@ duplicate emails. This command will find any user accounts that have duplicate
 emails. It also shows the last login time for each affected user and indicates
 if they are superusers of the site.
 
-.. code-block:: bash
+.. code-block:: console
 
     $ pootle find_duplicate_emails
 
@@ -651,10 +871,12 @@ This command requires 2 mandatory arguments, ``src_username`` and
 Submissions from the first are re-assigned to the second. The users' profile
 data is not merged.
 
+.. django-admin-option:: --no-delete
+
 By default ``src_username`` will be deleted after the contributions have been
 merged. You can prevent this by using the :option:`--no-delete` option.
 
-.. code-block:: bash
+.. code-block:: console
 
     $ pootle merge_user src_username target_username
 
@@ -673,9 +895,12 @@ removing a spam account or other malicious user.
 This command requires a mandatory ``username`` argument, which should be a valid
 username for a user of your site.
 
-.. code-block:: bash
+.. versionchanged:: 2.7.3 :djadmin:`purge_user` can accept multiple user
+   accounts to purge.
 
-    $ pootle purge_user username
+.. code-block:: console
+
+    $ pootle purge_user username [username ...]
 
 
 .. django-admin:: update_user_email
@@ -686,16 +911,19 @@ update_user_email
 .. versionadded:: 2.7.1
 
 
-.. code-block:: bash
+.. code-block:: console
 
     $ pootle update_user_email username email
 
 This command can be used if you wish to update a user's email address. This
 might be useful if you have users with duplicate email addresses.
 
-This command requires a mandatory ``username`` argument, which should be a valid
-username for a user of your site, and a mandatory ``email`` argument which
-should to update a valid email address.
+This command requires a mandatory ``username``, which should be a valid
+username for a user of your site, and a mandatory valid ``email`` address.
+
+.. code-block:: console
+
+    $ pootle update_user_email username email
 
 
 .. django-admin:: verify_user
@@ -710,17 +938,21 @@ Verify a user without the user having to go through email verification process.
 This is useful if you are migrating users that have already been verified, or
 if you want to create a superuser that can log in immediately.
 
-This command requires either a mandatory ``username`` argument, which should be a
-valid username for a user of your site, or the :option:`--all` flag if you wish to
-verify all users of your site.
+This command requires either mandatory ``username`` arguments, which should be
+valid username(s) for user(s) on your site, or the :option:`--all` flag if you
+wish to verify all users of your site.
 
-.. code-block:: bash
+.. versionchanged:: 2.7.3 :djadmin:`verify_user` can accept multiple user
+   accounts to verify.
 
-    $ pootle verify_user username
+.. code-block:: console
+
+    $ pootle verify_user username [username ...]
 
 Available options:
 
-:option:`--all`
+.. django-admin-option:: --all
+
   Verify all users of the site
 
 
@@ -733,50 +965,9 @@ There are multiple ways to run Pootle, and some of them rely on running WSGI
 servers that can be reverse proxied to a proper HTTP web server such as nginx
 or lighttpd.
 
-The Translate Toolkit offers a bundled CherryPy server but there are many more
-options such as gunicorn, flup, paste, etc.
-
-
-.. django-admin:: run_cherrypy
-
-run_cherrypy
-^^^^^^^^^^^^
-
-Run the CherryPy server bundled with the Translate Toolkit.
-
-Available options:
-
-:option:`--host`
-  The hostname to listen on.
-
-  Default: ``127.0.0.1``.
-
-:option:`--port`
-  The TCP port on which the server should listen for new connections.
-
-  Default: ``8080``.
-
-:option:`--threads`
-  The number of working threads to create.
-
-  Default: ``1``.
-
-:option:`--name`
-  The name of the worker process.
-
-  Default: :func:`socket.gethostname`.
-
-:option:`--queue`
-  Specifies the maximum number of queued connections. This is the the
-  ``backlog`` argument to :func:`socket.listen`.
-
-  Default: ``5``.
-
-:option:`--ssl_certificate`
-  The filename of the server SSL certificate.
-
-:option:`--ssl_privatekey`
-  The filename of the server's private key file.
+There are many more options such as `uWSGI
+<http://uwsgi-docs.readthedocs.org/en/latest/WSGIquickstart.html>`_, `Gunicorn
+<http://gunicorn.org/>`_, etc.
 
 
 .. _commands#deprecated:
@@ -819,6 +1010,28 @@ update_from_vcs
 
 Version Control support has been removed from Pootle and will reappear in a
 later release.
+
+
+.. django-admin:: run_cherrypy
+
+run_cherrypy
+^^^^^^^^^^^^
+
+.. deprecated:: 2.7.3
+
+Run the CherryPy server bundled with the Translate Toolkit.
+
+
+.. django-admin:: start
+
+start
+^^^^^
+
+.. removed:: 2.7.3
+
+Use :djadmin:`runserver` instead.
+
+Run Pootle using the default Django server.
 
 
 .. _commands#running_in_cron:

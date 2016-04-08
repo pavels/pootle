@@ -6,102 +6,143 @@
  * AUTHORS file for copyright and authorship information.
  */
 
-'use strict';
-
 import Backbone from 'backbone';
+import $ from 'jquery';
 import React from 'react';
 import _ from 'underscore';
 
 import msg from '../../msg';
 
 
-let AdminController = React.createClass({
+const AdminController = React.createClass({
+
+  propTypes: {
+    adminModule: React.PropTypes.object.isRequired,
+    appRoot: React.PropTypes.string.isRequired,
+    formChoices: React.PropTypes.object.isRequired,
+    router: React.PropTypes.object.isRequired,
+  },
 
   /* Lifecycle */
 
   getInitialState() {
     return {
-      items: new this.props.adminModule.collection(),
+      items: new this.props.adminModule.Collection(),
       selectedItem: null,
       searchQuery: '',
-      view: 'edit'
+      view: 'edit',
     };
-  },
-
-  setupRoutes(router) {
-
-    router.on('route:main', function (qs) {
-      var searchQuery = '';
-      qs !== undefined && (searchQuery = qs.q);
-      this.handleSearch(searchQuery);
-    }.bind(this));
-
-    router.on('route:edit', function (id, qs) {
-      var Model = this.props.adminModule.model;
-      var item = new Model({id: id});
-      this.handleSelectItem(item);
-    }.bind(this));
   },
 
   componentWillMount() {
     this.setupRoutes(this.props.router);
-    Backbone.history.start({pushState: true, root: this.props.appRoot});
+    Backbone.history.start({ pushState: true, root: this.props.appRoot });
   },
 
   componentWillUpdate(nextProps, nextState) {
-    this.handleURL(nextState);
+    if (nextState.searchQuery !== this.state.searchQuery ||
+        nextState.selectedItem !== this.state.selectedItem) {
+      this.handleURL(nextState);
+    }
   },
 
+
+  setupRoutes(router) {
+    router.on('route:main', (searchQuery) => {
+      let query = searchQuery;
+      if (searchQuery === undefined || searchQuery === null) {
+        query = '';
+      }
+      this.handleSearch(query);
+    });
+
+    router.on('route:edit', (id) => {
+      this.handleSelectItem(id);
+    });
+  },
 
   /* State-changing handlers */
 
   handleSearch(query, extraState) {
-    var newState = extraState || {};
+    const newState = extraState || {};
 
     if (query !== this.state.searchQuery) {
       newState.searchQuery = query;
       newState.selectedItem = null;
     }
 
-    return this.state.items.search(query).then(function () {
+    return this.state.items.search(query).then(() => {
       newState.items = this.state.items;
       this.setState(newState);
-    }.bind(this));
+    });
   },
 
-  handleSelectItem(item) {
-    var newState = {selectedItem: item, view: 'edit'};
-
-    if (this.state.items.contains(item)) {
-      this.setState(newState);
+  handleSelectItem(itemId) {
+    const item = this.state.items.get(itemId);
+    if (item) {
+      this.setState({ selectedItem: item, view: 'edit' });
     } else {
-      item.fetch().then(function () {
-        this.handleSearch(this.state.searchQuery, newState);
-      }.bind(this));
+      const { items } = this.state;
+      items.search('')
+        .then(() => {
+          /* eslint-disable new-cap */
+          const deferred = $.Deferred();
+          /* eslint-enable new-cap */
+
+          let newItem = items.get(itemId);
+          if (newItem !== undefined) {
+            deferred.resolve(newItem);
+          } else {
+            newItem = new this.props.adminModule.Model({ id: itemId });
+            newItem.fetch({
+              success: () => {
+                deferred.resolve(newItem);
+              },
+            });
+          }
+
+          return deferred.promise();
+        }).then((newItem) => {
+          items.unshift(newItem, { merge: true });
+          this.setState({
+            items,
+            selectedItem: newItem,
+            view: 'edit',
+          });
+        });
     }
   },
 
   handleAdd() {
-    this.setState({selectedItem: null, view: 'add'});
+    this.setState({ selectedItem: null, view: 'add' });
   },
 
   handleCancel() {
-    this.setState({selectedItem: null, view: 'edit'});
+    this.setState({ selectedItem: null, view: 'edit' });
   },
 
   handleSave(item) {
-    this.handleSelectItem(item);
+    const { items } = this.state;
+    items.unshift(item, { merge: true });
+    items.move(item, 0);
+
+    this.setState({
+      items,
+      selectedItem: item,
+      view: 'edit',
+    });
+
     msg.show({
       text: gettext('Saved successfully.'),
-      level: 'success'
+      level: 'success',
     });
   },
 
   handleDelete() {
-    this.setState({selectedItem: null});
+    this.setState({ selectedItem: null });
     msg.show({
       text: gettext('Deleted successfully.'),
-      level: 'danger'
+      level: 'danger',
     });
   },
 
@@ -109,15 +150,14 @@ let AdminController = React.createClass({
   /* Handlers */
 
   handleURL(newState) {
-    let { router } = this.props;
-    let query = newState.searchQuery;
+    const { router } = this.props;
+    const query = newState.searchQuery;
     let newURL;
 
     if (newState.selectedItem) {
       newURL = `/${newState.selectedItem.id}/`;
     } else {
-      var params = query === '' ? {} : {q: query};
-      newURL = router.toFragment('', params);
+      newURL = query === '' ? '/' : `?q=${encodeURIComponent(query)}`;
     }
 
     router.navigate(newURL);
@@ -127,21 +167,21 @@ let AdminController = React.createClass({
   /* Layout */
 
   render() {
-    var model = this.props.adminModule.model;
+    const { Model } = this.props.adminModule;
 
     // Inject dynamic model form choices
     // FIXME: hackish and too far from ideal
-    _.defaults(model.prototype, {fieldChoices: {}});
-    _.extend(model.prototype.fieldChoices, this.props.formChoices);
-    _.extend(model.prototype.defaults, this.props.formChoices.defaults);
+    _.defaults(Model.prototype, { fieldChoices: {} });
+    _.extend(Model.prototype.fieldChoices, this.props.formChoices);
+    _.extend(Model.prototype.defaults, this.props.formChoices.defaults);
 
-    var props = {
+    const props = {
       items: this.state.items,
       selectedItem: this.state.selectedItem,
       searchQuery: this.state.searchQuery,
       view: this.state.view,
       collection: this.props.adminModule.collection,
-      model: model,
+      model: Model,
 
       onSearch: this.handleSearch,
       onSelectItem: this.handleSelectItem,
@@ -153,10 +193,10 @@ let AdminController = React.createClass({
 
     return (
       <div className="admin-app">
-        <this.props.adminModule.App {...props} />
+        <this.props.adminModule.Controller {...props} />
       </div>
     );
-  }
+  },
 
 });
 

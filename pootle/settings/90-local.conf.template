@@ -93,6 +93,35 @@ DATABASES = {
 #}
 
 #
+# Local Translation Memory service
+#
+
+# Setup for connection to the ElasticSearch server for translation memory based
+# on the projects hosted on Pootle.
+# You may want to set AMAGAMA_URL to '' (empty string) if using this service.
+#
+#POOTLE_TM_SERVER = {
+#    'local': {
+#        'ENGINE': 'pootle.core.search.backends.ElasticSearchBackend',
+#        'HOST': 'localhost',
+#        'PORT': 9200,
+#        # Every TM server must have its own unique index.
+#        'INDEX_NAME': 'translations',
+#        # Provides a weighting factor to alter the final score for TM results
+#        # from this TM server. Valid values are between ``0.0`` and ``1.0``,
+#        # both included. Defaults to ``1.0`` if not provided.
+#        'WEIGHT': 1.0,
+#    },
+#    'external': {
+#        'ENGINE': 'pootle.core.search.backends.ElasticSearchBackend',
+#        'HOST': 'localhost',
+#        'PORT': 9200,
+#        'INDEX_NAME': 'external-translations',
+#        'WEIGHT': 0.9,
+#    },
+#}
+
+#
 # Logging
 #
 
@@ -174,16 +203,32 @@ POOTLE_MARKUP_FILTER = (None, {})
 # be used in case the service supports using an API key.
 #
 # Available options are:
-# 'APERTIUM': Apertium service.
-#             For this service you need to set the API key.
-#             Get your key at http://api.apertium.org/register.jsp
+# 'CAIGHDEAN_TRANSLATE': Caighdeán Translate service.
+#             Provides translation from Manx Gaelic (gv) and
+#             Scottish Gaelic (gd), into Irish Gaelic (ga-IE)
+#             See more at https://github.com/kscanne/caighdean
 # 'GOOGLE_TRANSLATE': Google Translate service.
 #             For this service you need to set the API key.
 #             Note that Google Translate API is a paid service
 #             See more at https://cloud.google.com/translate/v2/pricing
+# 'WELSH_TRANSLATE': Welsh Translate service.
+#             Provides translation from English (en) to Welsh (cy)
+#             For this service you need an API key.
+#             See more at http://techiaith.cymru/api/translation/?lang=en
+# 'YANDEX_TRANSLATE': Yandex Translate service.
+#             For this service you need to set the API key.
+#             See more at https://tech.yandex.com/translate/
 #
 POOTLE_MT_BACKENDS = [
-#        ('APERTIUM', ''),
-#        ('GOOGLE_TRANSLATE', ''),
-#        ('YANDEX_TRANSLATE', ''),
+#    ('CAIGHDEAN_TRANSLATE', ''),
+#    ('GOOGLE_TRANSLATE', ''),
+#    ('WELSH_TRANSLATE', ''),
+#    ('YANDEX_TRANSLATE', ''),
+]
+
+
+# Custom templates directories
+#
+TEMPLATES[0]['DIRS'] = [
+    # working_path(os.path.join('custom', 'templates')),
 ]

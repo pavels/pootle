@@ -6,26 +6,25 @@
  * AUTHORS file for copyright and authorship information.
  */
 
-'use strict';
-
 import React from 'react';
-import { PureRenderMixin } from 'react/addons';
+import { PureRenderMixin } from 'react-addons-pure-render-mixin';
 
 import AuthProgress from './AuthProgress';
 
 
-let RequestPasswordResetProgress = React.createClass({
-  mixins: [PureRenderMixin],
+const RequestPasswordResetProgress = React.createClass({
 
   propTypes: {
     email: React.PropTypes.string.isRequired,
   },
 
+  mixins: [PureRenderMixin],
+
   render() {
-      let sendingMsg = interpolate(gettext('Sending email to %s...'),
+    const sendingMsg = interpolate(gettext('Sending email to %s...'),
                                    [this.props.email]);
-      return <AuthProgress msg={sendingMsg} />;
-  }
+    return <AuthProgress msg={sendingMsg} />;
+  },
 
 });
 

@@ -8,12 +8,15 @@
 # AUTHORS file for copyright and authorship information.
 
 import re
+
+
 re._MAXCACHE = 1000
 
 
 remove = re.compile(u"[\.]+", re.U)  # dots
 delimiters = re.compile(u"[\W]+", re.U)  # anything except a-z, A-Z and _
-delimiters_begin = re.compile(u"^[\W]+", re.U)  # anything except a-z, A-Z and _
+delimiters_begin = re.compile(u"^[\W]+",
+                              re.U)  # anything except a-z, A-Z and _
 delimiters_end = re.compile(u"[\W]+$", re.U)  # anything except a-z, A-Z and _
 
 english_date = re.compile(
@@ -27,7 +30,8 @@ xmltag_regex = re.compile(u'(<\/?[\w]+.*?>)', re.U)
 java_format_regex = re.compile(u'(\\\{\d+\\\}|\{\d+\})', re.U)
 template_format_regex = re.compile(u'(\$\{[\w\.\:]+\})', re.U)
 android_format_regex = re.compile(u'(%\d\$\w)', re.U)
-sprintf_regex = re.compile(u'(%[\d]*(?:.\d+)*(?:h|l|I|I32|I64)*[cdiouxefgns])', re.U)
+sprintf_regex = re.compile(u'(%[\d]*(?:.\d+)*(?:h|l|I|I32|I64)*[cdiouxefgns])',
+                           re.U)
 objective_c_regex = re.compile(u'(%@)', re.U)
 dollar_sign_regex = re.compile(u'(\$[\w\d]+?\$)', re.U)
 persent_sign_regex = re.compile(u'(\%[\w\d]+?\%)', re.U)
@@ -41,7 +45,8 @@ product_names_regex = re.compile(
 )
 shortcuts_regex = re.compile(u'(Ctrl\+\w$|Shift\+\w$|Alt\+\w$)', re.U)
 shortcuts_modifier_regex = re.compile(u'(Ctrl\+$|Shift\+$|Alt\+$)', re.U)
-hanging_symbols_regex = re.compile(u'(^[^\w\&]\s|\s[^\w\&]\s|\s[^\w\&]$|^[^\w\&]$)', re.U)
+hanging_symbols_regex = \
+    re.compile(u'(^[^\w\&]\s|\s[^\w\&]\s|\s[^\w\&]$|^[^\w\&]$)', re.U)
 
 
 def find_placeholders(aref, regex, cls=''):
@@ -109,10 +114,6 @@ def wordcount(string):
     find_placeholders(chunks, shortcuts_regex)
     # Shortcut modifiers
     find_placeholders(chunks, shortcuts_modifier_regex)
-    # Surrounding quotes (including ones around placeholders)
-    #find_placeholders($chunks, re.compile(u'(^["\']+|["\']+$)', re.U))
-    # End punctuation after (or between) placeholders
-    #find_placeholders($chunks, re.compile(u'(^\.$)', re.U))
 
     # Find patterns that are not counted as words in Trados
     # Hanging symbols (excluding a-z, _ and &)
@@ -128,7 +129,8 @@ def _count_words(aref):
     for chunk in aref:
         if chunk['translate']:
             s = chunk['string']
-            # Replace the date with just the month name (i.e. count as a single word)
+            # Replace the date with just the month name (i.e. count as a single
+            # word)
             s = english_date.sub(u'\g<1>\g<2>\g<3>', s)
 
             s = remove.sub(u'', s)

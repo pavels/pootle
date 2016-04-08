@@ -9,16 +9,15 @@
 
 """Overrides and support functions for arbitrary locale support."""
 
-import locale
 import os
-
-from django.utils import translation
-from django.utils.functional import lazy
-from django.utils.translation import trans_real
 
 from translate.lang import data
 
-from pootle.i18n import bidi, gettext
+from django.utils import translation
+from django.utils.functional import lazy
+from django.utils.translation import LANGUAGE_SESSION_KEY, trans_real
+
+from pootle.i18n import gettext
 
 
 def find_languages(locale_path):
@@ -41,30 +40,9 @@ def supported_langs():
     return settings.LANGUAGES
 
 
-def lang_choices():
-    """Generate locale choices for drop down lists in forms."""
-    choices = []
-    for code, name in supported_langs():
-        name = data.tr_lang(translation.to_locale('en'))(name)
-        tr_name = data.tr_lang(translation.to_locale(code))(name)
-        # We have to use the bidi.insert_embeding() to ensure that brackets
-        # in the English part of the name is rendered correctly in an RTL
-        # layout like Arabic. We can't use markup because this is used
-        # inside an option tag.
-        if tr_name != name:
-            name = u"%s | %s" % (bidi.insert_embeding(tr_name),
-                                 bidi.insert_embeding(name))
-        else:
-            name = bidi.insert_embeding(name)
-        choices.append((code, name))
-
-    choices.sort(cmp=locale.strcoll, key=lambda choice: unicode(choice[1]))
-    return choices
-
-
 def get_lang_from_session(request, supported):
     if hasattr(request, 'session'):
-        lang_code = request.session.get('django_language', None)
+        lang_code = request.session.get(LANGUAGE_SESSION_KEY, None)
         if lang_code and lang_code in supported:
             return lang_code
 
@@ -78,8 +56,8 @@ def get_lang_from_cookie(request, supported):
 
     if lang_code and lang_code in supported:
         return lang_code
-    else:
-        return None
+
+    return None
 
 
 def get_lang_from_http_header(request, supported):
@@ -101,7 +79,7 @@ def get_lang_from_http_header(request, supported):
         if normalized in supported:
             return normalized
 
-        #FIXME: horribly slow way of dealing with languages with @ in them
+        # FIXME: horribly slow way of dealing with languages with @ in them
         for lang in supported.keys():
             if normalized == data.normalize_code(lang):
                 return lang
@@ -138,8 +116,9 @@ def override_gettext(real_translation):
 
 
 def get_language_bidi():
-    """Override for Django's get_language_bidi that's aware of more
-    RTL languages."""
+    """Override for Django's get_language_bidi that's aware of more RTL
+    languages.
+    """
     return gettext.language_dir(translation.get_language()) == 'rtl'
 
 

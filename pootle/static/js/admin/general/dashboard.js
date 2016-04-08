@@ -18,26 +18,26 @@ function slideTable(event) {
   $.ajax({
     url: l('/admin/more-stats/'),
     dataType: 'json',
-    success: function (data) {
-      var newstats = '';
-      $(data).each(function () {
-        newstats += '<tr><th scope="row">' + this[0] + '</th>'
-                    + '<td class="stats-number">' + this[1] + '</td></tr>';
+    success(data) {
+      let newstats = '';
+      data.forEach((values) => {
+        newstats += `<tr><th scope="row">${values[0]}</th>`
+                    + `<td class="stats-number">${values[1]}</td></tr>`;
       });
       $node.append(newstats);
       $node.slideDown('fast');
       $node.next('tbody').remove();
     },
-    beforeSend: function () {
+    beforeSend() {
       $(document).off('click', '.slide', slideTable);
       $node.spin();
     },
-    complete: function () {
+    complete() {
       $node.spin(false);
     },
-    error: function () {
+    error() {
       $(document).on('click', '.slide', slideTable);
-    }
+    },
   });
 }
 
@@ -48,7 +48,7 @@ const dashboard = {
     $(document).on('click', '.slide', slideTable);
   },
 
-}
+};
 
 
 export default dashboard;

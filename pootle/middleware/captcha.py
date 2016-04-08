@@ -29,10 +29,11 @@ CAPTCHA_EXEMPT_URLPATTERNS = (
 )
 
 
-class CaptchaMiddleware:
+class CaptchaMiddleware(object):
     """Middleware to display a captcha question to verify POST submissions
     are made by humans.
     """
+
     def process_request(self, request):
         if (not settings.POOTLE_CAPTCHA_ENABLED or not request.POST or
             request.session.get('ishuman', False)):
@@ -59,7 +60,8 @@ class CaptchaMiddleware:
                 target_urls = 0
 
             try:
-                comment_urls = len(URL_RE.findall(request.POST['translator_comment']))
+                comment_urls = len(URL_RE.findall(
+                    request.POST['translator_comment']))
             except KeyError:
                 comment_urls = 0
 

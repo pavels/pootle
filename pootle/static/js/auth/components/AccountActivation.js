@@ -6,21 +6,20 @@
  * AUTHORS file for copyright and authorship information.
  */
 
-'use strict';
-
 import React from 'react';
-import { PureRenderMixin } from 'react/addons';
+import { PureRenderMixin } from 'react-addons-pure-render-mixin';
 
 import AuthContent from './AuthContent';
 
 
-let AccountActivation = React.createClass({
-  mixins: [PureRenderMixin],
+const AccountActivation = React.createClass({
 
   propTypes: {
     onClose: React.PropTypes.func.isRequired,
     signUpEmail: React.PropTypes.string,
   },
+
+  mixins: [PureRenderMixin],
 
 
   /* Layout */
@@ -35,18 +34,21 @@ let AccountActivation = React.createClass({
       );
     } else {
       emailLinkMsg = gettext(
-        'We have sent an email containing the special link to the address used to register this account.'
+        'We have sent an email containing the special link to the address ' +
+        'used to register this account.'
       );
     }
 
-    let activationWarningMsg = gettext('Your account needs activation.');
-    let instructionsMsg = gettext('Please follow that link to continue the account creation.');
+    const activationWarningMsg = gettext('Your account needs activation.');
+    const instructionsMsg = gettext(
+      'Please follow that link to continue the account creation.'
+    );
 
     return (
       <AuthContent>
         <div className="actions sign-up">
           <p>{activationWarningMsg}</p>
-          <p dangerouslySetInnerHTML={{__html: emailLinkMsg}} />
+          <p dangerouslySetInnerHTML={{ __html: emailLinkMsg }} />
           <p>{instructionsMsg}</p>
           {this.props.signUpEmail &&
             <div>
@@ -61,7 +63,7 @@ let AccountActivation = React.createClass({
         </div>
       </AuthContent>
     );
-  }
+  },
 
 });
 

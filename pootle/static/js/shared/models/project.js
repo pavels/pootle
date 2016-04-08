@@ -6,56 +6,55 @@
  * AUTHORS file for copyright and authorship information.
  */
 
-'use strict';
+import Backbone from 'backbone';
+import _ from 'underscore';
 
-var _ = require('underscore');
-var Backbone = require('backbone');
-
-var AdminAPIMixin = require('mixins/admin_api');
+import AdminAPIMixin from 'mixins/admin_api';
 
 
-var Project = Backbone.Model.extend({
+export const Project = Backbone.Model.extend({
 
   defaults: {
-    'code': '',
-    'fullname': '',
-    'checkstyle': 'standard',
-    'localfiletype': 'po',
-    'treestyle': 'auto',
-    'source_language': '',
-    'ignored_files': '',
-    'screenshot_search_prefix': '',
-    'disabled': false,
+    code: '',
+    fullname: '',
+    checkstyle: 'standard',
+    localfiletype: 'po',
+    treestyle: 'auto',
+    source_language: '',
+    ignoredfiles: '',
+    screenshot_search_prefix: '',
+    disabled: false,
   },
 
-  urlRoot: function () {
+  urlRoot() {
     return l('/xhr/admin/projects/');
   },
 
-  getAbsoluteUrl: function () {
+  getAbsoluteUrl() {
     return l(['', 'projects', this.get('code'), ''].join('/'));
   },
 
-  getLanguagesUrl: function () {
+  getLanguagesUrl() {
     return l(['', 'projects', this.get('code'), 'admin', 'languages', ''].join('/'));
   },
 
-  getPermissionsUrl: function () {
+  getPermissionsUrl() {
     return l(['', 'projects', this.get('code'), 'admin', 'permissions', ''].join('/'));
   },
 
-  getFieldChoices: function (fieldName) {
+  getFieldChoices(fieldName) {
     if (this.fieldChoices && this.fieldChoices.hasOwnProperty(fieldName)) {
-      return this.fieldChoices[fieldName].map(function (field) {
+      return this.fieldChoices[fieldName].map((field) => ({
         // FIXME: react-select's issue #25 prevents using non-string values
-        return {value: field[0].toString(), label: field[1]};
-      });
+        value: field[0].toString(),
+        label: field[1],
+      }));
     }
     return [];
   },
 
-  toJSON: function () {
-    var attrs = _.clone(this.attributes);
+  toJSON() {
+    const attrs = _.clone(this.attributes);
     attrs.disabled = attrs.disabled ? gettext('disabled') : '';
     return attrs;
   },
@@ -63,17 +62,12 @@ var Project = Backbone.Model.extend({
 });
 
 
-var ProjectSet = Backbone.Collection.extend(
+export const ProjectSet = Backbone.Collection.extend(
   _.extend({}, AdminAPIMixin, {
 
-  model: Project,
+    model: Project,
 
-  url: l('/xhr/admin/projects/'),
+    url: l('/xhr/admin/projects/'),
 
-}));
-
-
-module.exports = {
-  Project: Project,
-  ProjectSet: ProjectSet,
-};
+  })
+);

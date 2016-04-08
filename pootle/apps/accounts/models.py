@@ -7,9 +7,6 @@
 # or later license. See the LICENSE file for a copy of the license and the
 # AUTHORS file for copyright and authorship information.
 
-
-__all__ = ('User', )
-
 import datetime
 import re
 from hashlib import md5
@@ -22,7 +19,7 @@ from django.core.mail import send_mail
 from django.core.urlresolvers import reverse
 from django.core.validators import RegexValidator
 from django.db import models
-from django.db.models import ProtectedError, Sum, Q
+from django.db.models import ProtectedError, Q, Sum
 from django.forms.models import model_to_dict
 from django.utils import timezone
 from django.utils.functional import cached_property
@@ -34,11 +31,14 @@ from allauth.account.utils import sync_user_email_addresses
 from pootle.core.cache import make_method_key
 from pootle.core.utils.json import jsonify
 from pootle_language.models import Language
-from pootle_statistics.models import Submission, SubmissionTypes
-from pootle_store.models import SuggestionStates, Unit
+from pootle_statistics.models import Submission, ScoreLog
+from pootle_store.models import Unit
 
 from .managers import UserManager
 from .utils import UserMerger, UserPurger
+
+
+__all__ = ('User', )
 
 
 CURRENCIES = (('USD', 'USD'), ('EUR', 'EUR'), ('CNY', 'CNY'), ('JPY', 'JPY'))
@@ -58,7 +58,9 @@ class User(AbstractBaseUser):
     Note that the ``password`` and ``last_login`` fields are inherited
     from ``AbstractBaseUser``.
     """
-    username = models.CharField(_('Username'), max_length=30, unique=True,
+
+    username = models.CharField(
+        _('Username'), max_length=30, unique=True,
         help_text=_('Required. 30 characters or fewer. Letters, numbers and '
                     '@/./+/-/_ characters'),
         validators=[
@@ -70,10 +72,12 @@ class User(AbstractBaseUser):
     email = models.EmailField(_('Email Address'), max_length=255)
     full_name = models.CharField(_('Full Name'), max_length=255, blank=True)
 
-    is_active = models.BooleanField(_('Active'), default=True,
+    is_active = models.BooleanField(
+        _('Active'), default=True,
         help_text=_('Designates whether this user should be treated as '
                     'active. Unselect this instead of deleting accounts.'))
-    is_superuser = models.BooleanField(_('Superuser Status'), default=False,
+    is_superuser = models.BooleanField(
+        _('Superuser Status'), default=False,
         help_text=_('Designates that this user has all permissions without '
                     'explicitly assigning them.'))
 
@@ -81,10 +85,11 @@ class User(AbstractBaseUser):
 
     # Translation setting fields
     unit_rows = models.SmallIntegerField(default=9,
-            verbose_name=_("Number of Rows"))
-    alt_src_langs = models.ManyToManyField('pootle_language.Language',
-            blank=True, db_index=True, limit_choices_to=~Q(code='templates'),
-            verbose_name=_("Alternative Source Languages"))
+                                         verbose_name=_("Number of Rows"))
+    alt_src_langs = models.ManyToManyField(
+        'pootle_language.Language', blank=True, db_index=True,
+        limit_choices_to=~Q(code='templates'),
+        verbose_name=_("Alternative Source Languages"))
 
     # Score-related fields
     rate = models.FloatField(_('Rate'), null=False, default=0)
@@ -108,8 +113,9 @@ class User(AbstractBaseUser):
     @property
     def display_name(self):
         """Human-readable display name."""
-        return (self.get_full_name() if self.get_full_name()
-                                     else self.get_short_name())
+        return (self.get_full_name()
+                if self.get_full_name()
+                else self.get_short_name())
 
     @property
     def formatted_name(self):
@@ -144,8 +150,8 @@ class User(AbstractBaseUser):
     @cached_property
     def is_meta(self):
         """Returns `True` if this is a special fake user."""
-        return self.username in UserManager.META_USERS + \
-                                settings.POOTLE_META_USERS
+        return self.username in \
+            UserManager.META_USERS + settings.POOTLE_META_USERS
 
     @cached_property
     def email_hash(self):
@@ -153,22 +159,6 @@ class User(AbstractBaseUser):
             return md5(self.email).hexdigest()
         except UnicodeEncodeError:
             return None
-
-    @classmethod
-    def get(cls, user):
-        """Return the expected user instance.
-
-        This function is only necessary if `user` could be anonymous,
-        because we want to work with the instance of the special `nobody`
-        user instead of Django's own `AnonymousUser`.
-
-        If you know for certain that a user is logged in, then use it
-        straight away.
-        """
-        if user.is_authenticated():
-            return user
-
-        return cls.objects.get_nobody_user()
 
     @classmethod
     def top_scorers(cls, days=30, language=None, project=None, limit=5):
@@ -196,29 +186,45 @@ class User(AbstractBaseUser):
         past = now + datetime.timedelta(-days)
 
         lookup_kwargs = {
-            'scorelog__creation_time__range': [past, now],
+            'creation_time__range': [past, now],
         }
 
         if language is not None:
             lookup_kwargs.update({
-                'scorelog__submission__translation_project__language__code':
+                'submission__translation_project__language__code':
                     language,
             })
 
         if project is not None:
             lookup_kwargs.update({
-                'scorelog__submission__translation_project__project__code':
+                'submission__translation_project__project__code':
                     project,
             })
 
-        top_scorers = cls.objects.hide_meta().filter(
+        meta_user_ids = cls.objects.meta_users().values_list('id', flat=True)
+        top_scores = ScoreLog.objects.values("user").filter(
             **lookup_kwargs
+        ).exclude(
+            user__pk__in=meta_user_ids,
         ).annotate(
-            total_score=Sum('scorelog__score_delta'),
+            total_score=Sum('score_delta'),
         ).order_by('-total_score')
 
         if isinstance(limit, (int, long)) and limit > 0:
-            top_scorers = top_scorers[:limit]
+            top_scores = top_scores[:limit]
+
+        users = dict(
+            (user.id, user)
+            for user in cls.objects.filter(
+                pk__in=[item['user'] for item in top_scores]
+            )
+        )
+
+        top_scorers = []
+        for item in top_scores:
+            user = users[item['user']]
+            user.total_score = item['total_score']
+            top_scorers.append(user)
 
         cache.set(cache_key, list(top_scorers), 60)
         return top_scorers
@@ -227,8 +233,9 @@ class User(AbstractBaseUser):
         return self.username
 
     def save(self, *args, **kwargs):
-        old_email = (None if self.pk is None
-                          else User.objects.get(pk=self.pk).email)
+        old_email = (None
+                     if self.pk is None
+                     else User.objects.get(pk=self.pk).email)
 
         super(User, self).save(*args, **kwargs)
 
@@ -259,16 +266,28 @@ class User(AbstractBaseUser):
         return jsonify(model_to_dict(self, exclude=['password']))
 
     def is_anonymous(self):
-        """Returns `True` if this is an anonymous user.
-
-        Since we treat the `nobody` user as special anonymous-like user,
-        we can't rely on `auth.User` model's `is_authenticated()` method.
-        """
+        """Returns `True` if this is an anonymous user."""
         return self.username == 'nobody'
+
+    def is_authenticated(self):
+        """Returns `True` if this is an authenticated user."""
+        return self.username != 'nobody'
 
     def is_system(self):
         """Returns `True` if this is the special `system` user."""
         return self.username == 'system'
+
+    def has_manager_permissions(self):
+        """Tells if the user is a manager for any language, project or TP."""
+        if self.is_anonymous():
+            return False
+        if self.is_superuser:
+            return True
+        criteria = {
+            'positive_permissions__codename': 'administrate',
+            'directory__pootle_path__regex': r'^/[^/]*/([^/]*/)?$',
+        }
+        return self.permissionset_set.filter(**criteria).exists()
 
     def get_full_name(self):
         """Returns the user's full name."""
@@ -345,60 +364,6 @@ class User(AbstractBaseUser):
         created_unit_pks = self.submission_set.get_unit_creates() \
                                               .values_list("unit", flat=True)
         return Unit.objects.filter(pk__in=created_unit_pks)
-
-    def pending_suggestion_count(self, tp):
-        """Returns the number of pending suggestions for the user in the given
-        translation project.
-
-        :param tp: a :cls:`TranslationProject` object.
-        """
-        return self.suggestions.filter(unit__store__translation_project=tp,
-                                       state=SuggestionStates.PENDING).count()
-
-    def accepted_suggestion_count(self, tp):
-        """Returns the number of accepted suggestions for the user in the given
-        translation project.
-
-        :param tp: a :cls:`TranslationProject` object.
-        """
-        return self.suggestions.filter(unit__store__translation_project=tp,
-                                       state=SuggestionStates.ACCEPTED).count()
-
-    def rejected_suggestion_count(self, tp):
-        """Returns the number of rejected suggestions for the user in the given
-        translation project.
-
-        :param tp: a :cls:`TranslationProject` object.
-        """
-        return self.suggestions.filter(unit__store__translation_project=tp,
-                                       state=SuggestionStates.REJECTED).count()
-
-    def total_submission_count(self, tp):
-        """Returns the number of submissions the current user has done from the
-        editor in the given translation project.
-
-        :param tp: a :cls:`TranslationProject` object.
-        """
-        return Submission.objects.filter(
-            submitter=self,
-            translation_project=tp,
-            type__in=SubmissionTypes.CONTRIBUTION_TYPES,
-        ).count()
-
-    def overwritten_submission_count(self, tp):
-        """Returns the number of submissions the current user has done from the
-        editor and have been overwritten by other users in the given
-        translation project.
-
-        :param tp: a :cls:`TranslationProject` object.
-        """
-        return Submission.objects.filter(
-            submitter=self,
-            translation_project=tp,
-            type__in=SubmissionTypes.CONTRIBUTION_TYPES,
-        ).exclude(
-            unit__submitted_by=self,
-        ).count()
 
     def top_language(self, days=30):
         """Returns the top language the user has contributed to and its

@@ -6,21 +6,19 @@
  * AUTHORS file for copyright and authorship information.
  */
 
-'use strict';
-
 import React from 'react';
-import { PureRenderMixin } from 'react/addons';
+import { PureRenderMixin } from 'react-addons-pure-render-mixin';
 
 import AuthContent from './AuthContent';
 
 
-let EmailConfirmation = React.createClass({
-  mixins: [PureRenderMixin],
+const EmailConfirmation = React.createClass({
 
   propTypes: {
     onClose: React.PropTypes.func.isRequired,
   },
 
+  mixins: [PureRenderMixin],
 
   /* Layout */
 
@@ -38,7 +36,7 @@ let EmailConfirmation = React.createClass({
         </div>
       </AuthContent>
     );
-  }
+  },
 
 });
 

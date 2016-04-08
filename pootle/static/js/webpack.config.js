@@ -21,12 +21,15 @@ var entries = {
   common: ['./common.js'],
   editor: ['./editor/app.js'],
   reports: ['./reports/app.js'],
-  vendor: ['react', 'react/addons', 'jquery', 'underscore', 'backbone'],
+  vendor: [
+    'react', 'react-dom', 'react-addons-pure-render-mixin', 'jquery',
+    'underscore', 'backbone'
+  ],
 };
 
 
 var resolve = {
-  extensions: ['', '.js', '.jsx'],
+  extensions: ['', '.js'],
   modulesDirectories: ['node_modules', 'shared'],
   alias: {
     pootle: __dirname,
@@ -37,14 +40,10 @@ var resolve = {
 
     'backbone-move': __dirname + '/vendor/backbone/backbone.move.js',
     'backbone-safesync': __dirname + '/vendor/backbone/backbone.safesync.js',
-    // FIXME: get rid of bb-router
-    'backbone-queryparams': __dirname + '/vendor/backbone/backbone.queryparams.js',
-    'backbone-queryparams-shim': __dirname + '/vendor/backbone/backbone.queryparams-1.1-shim.js',
     'backbone-relational': __dirname + '/vendor/backbone/backbone-relational.js',
 
     'jquery-bidi': __dirname + '/vendor/jquery/jquery.bidi.js',
     'jquery-caret': __dirname + '/vendor/jquery/jquery.caret.js',
-    'jquery-cookie': __dirname + '/vendor/jquery/jquery.cookie.js',
     'jquery-easing': __dirname + '/vendor/jquery/jquery.easing.js',
     'jquery-flot': __dirname + '/vendor/jquery/jquery.flot.js',
     'jquery-flot-stack': __dirname + '/vendor/jquery/jquery.flot.stack.js',
@@ -52,15 +51,12 @@ var resolve = {
     'jquery-flot-time': __dirname + '/vendor/jquery/jquery.flot.time.js',
     'jquery-highlightRegex': __dirname + '/vendor/jquery/jquery.highlightRegex.js',
     'jquery-history': __dirname + '/vendor/jquery/jquery.history.js',
-    'jquery-jsonp': __dirname + '/vendor/jquery/jquery.jsonp.js',
     'jquery-magnific-popup': __dirname + '/vendor/jquery/jquery.magnific-popup.js',
     'jquery-select2': __dirname + '/vendor/jquery/jquery.select2.js',
     'jquery-serializeObject': __dirname + '/vendor/jquery/jquery.serializeObject.js',
     'jquery-tipsy': __dirname + '/vendor/jquery/jquery.tipsy.js',
     'jquery-utils': __dirname + '/vendor/jquery/jquery.utils.js',
 
-    'diff-match-patch': __dirname + '/vendor/diff_match_patch.js', // FIXME: use npm module
-    iso8601: __dirname + '/vendor/iso8601.js', // FIXME: use npm module
     levenshtein: __dirname + '/vendor/levenshtein.js', // FIXME: use npm module
     moment: __dirname + '/vendor/moment.js', // FIXME: use npm module
     odometer: __dirname + '/vendor/odometer.js', // FIXME: use npm module
@@ -75,19 +71,18 @@ var resolve = {
 // and merge the entry definitions from the manifest files
 var root = process.env.WEBPACK_ROOT;
 if (root !== undefined) {
-  resolve.root = root.split(':');
-
-  var i, customPath, manifestEntries;
+  var customPaths = root.split(':');
+  resolve.root = [path.join(__dirname, 'node_modules')].concat(customPaths);
 
   var mergeArrays = function (a, b) {
     return _.isArray(a) ? a.concat(b) : undefined;
   };
 
-  for (i=0; i<resolve.root.length; i++) {
-    customPath = resolve.root[i];
+  for (var i=0; i<customPaths.length; i++) {
+    var customPath = customPaths[i];
 
     try {
-      manifestEntries = require(path.join(customPath, 'manifest.json'));
+      var manifestEntries = require(path.join(customPath, 'manifest.json'));
       entries = _.merge(entries, manifestEntries, mergeArrays);
     } catch (e) {
       console.error(e.message);
@@ -117,6 +112,10 @@ plugins.push.apply(plugins, [
     'process.env': {NODE_ENV: JSON.stringify(env)}
   }),
   new webpack.IgnorePlugin(/^\.\/locale$/, /moment$/),
+  new webpack.ContextReplacementPlugin(
+    /codemirror[\/\\]mode$/,
+    /htmlmixed|markdown|rst|textile/
+  ),
   new webpack.ProvidePlugin({
     'window.Backbone': 'backbone',
   }),
@@ -131,15 +130,30 @@ var config = {
   entry: entries,
   output: {
     path: __dirname,
+    publicPath: process.env.WEBPACK_PUBLIC_PATH,
     filename: './[name]/app.bundle.js'
   },
   module: {
     loaders: [
-      { test: /\.css/, loader: 'style-loader!css-loader', exclude: /node_modules/ },
-      { test: /\.jsx?$/, loader: 'babel-loader', exclude: /node_modules|vendor/}
+      { test: /\.css/, loader: 'style-loader!css-loader' },
+      {
+        test: /\.js$/,
+        loader: 'babel-loader',
+        query: {
+          cacheDirectory: true,
+          presets: [
+            require.resolve('babel-preset-es2015'),
+            require.resolve('babel-preset-react'),
+          ],
+        },
+        exclude: /node_modules|vendor/,
+      }
     ]
   },
   resolve: resolve,
+  resolveLoader: {
+    root: path.join(__dirname, 'node_modules'),
+  },
   plugins: plugins,
 };
 

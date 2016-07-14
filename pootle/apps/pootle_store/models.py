@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
 # Copyright (C) Pootle contributors.
@@ -12,6 +11,8 @@ import logging
 import operator
 import os
 from hashlib import md5
+
+from collections import OrderedDict
 
 from translate.filters.decorators import Category
 from translate.storage import base
@@ -42,8 +43,9 @@ from pootle.core.storage import PootleFileSystemStorage
 from pootle.core.url_helpers import (
     get_all_pootle_paths, get_editor_filter, split_pootle_path)
 from pootle.core.utils import dateformat
+from pootle.core.utils.aggregate import max_column
 from pootle.core.utils.timezone import datetime_min, make_aware
-from pootle_misc.aggregate import max_column
+from pootle_app.models import Directory
 from pootle_misc.checks import check_names, get_checker
 from pootle_misc.util import import_func
 from pootle_statistics.models import (Submission, SubmissionFields,
@@ -53,6 +55,8 @@ from .diff import StoreDiff
 from .fields import (PLURAL_PLACEHOLDER, SEPARATOR, MultiStringField,
                      TranslationStoreField)
 from .filetypes import factory_classes
+from .store.deserialize import StoreDeserialization
+from .store.serialize import StoreSerialization
 from .util import (
     FUZZY, OBSOLETE, TRANSLATED, UNTRANSLATED, get_change_str,
     vfolders_installed)
@@ -1149,11 +1153,11 @@ class Unit(models.Model, base.TranslationUnit):
         suggestion.review_time = current_time
         suggestion.save()
 
-        create_subs = {}
-        create_subs[SubmissionFields.TARGET] = [old_target, self.target]
+        create_subs = OrderedDict()
         if old_state != self.state:
             create_subs[SubmissionFields.STATE] = [old_state, self.state]
             self.store.mark_dirty(CachedMethods.WORDCOUNT_STATS)
+        create_subs[SubmissionFields.TARGET] = [old_target, self.target]
 
         for field in create_subs:
             kwargs = {
@@ -1253,11 +1257,10 @@ class Unit(models.Model, base.TranslationUnit):
     def get_terminology(self):
         """get terminology suggestions"""
         matcher = self.store.translation_project.gettermmatcher()
-        if matcher is not None:
-            result = matcher.matches(self.source)
-        else:
-            result = []
-        return result
+        if matcher is None:
+            return []
+
+        return matcher.matches(self.source)
 
     def get_last_updated_info(self):
         return {
@@ -1282,6 +1285,52 @@ class StoreManager(models.Manager):
     def live(self):
         """Filters non-obsolete stores."""
         return self.filter(obsolete=False)
+
+    def create_by_path(self, pootle_path, project=None,
+                       create_tp=True, create_directory=True):
+        from pootle_language.models import Language
+        from pootle_project.models import Project
+
+        (lang_code, proj_code,
+         dir_path, filename) = split_pootle_path(pootle_path)
+
+        ext = filename.split(".")[-1]
+
+        if project is None:
+            project = Project.objects.get(code=proj_code)
+        elif project.code != proj_code:
+            raise ValueError(
+                "Project must match pootle_path when provided")
+        valid_ext = [
+            project.localfiletype,
+            project.get_template_filetype()]
+        if ext not in valid_ext:
+            raise ValueError(
+                "'%s' is not a valid extension for this Project"
+                % ext)
+        if create_tp:
+            tp, created = (
+                project.translationproject_set.get_or_create(
+                    language=Language.objects.get(code=lang_code)))
+        else:
+            tp = project.translationproject_set.get(
+                language__code=lang_code)
+        if dir_path:
+            if not create_directory:
+                parent = Directory.objects.get(
+                    pootle_path="/".join(
+                        ["", lang_code, proj_code, dir_path]))
+            else:
+                parent = tp.directory
+                for child in dir_path.strip("/").split("/"):
+                    parent, created = Directory.objects.get_or_create(
+                        name=child, parent=parent)
+        else:
+            parent = tp.directory
+
+        store, created = self.get_or_create(
+            name=filename, parent=parent, translation_project=tp)
+        return store
 
 
 class Store(models.Model, CachedTreeItem, base.TranslationStore):
@@ -1337,7 +1386,7 @@ class Store(models.Model, CachedTreeItem, base.TranslationStore):
         return self.file.name
 
     @property
-    def is_terminology(self):
+    def has_terminology(self):
         """is this a project specific terminology store?"""
         # TODO: Consider if this should check if the store belongs to a
         # terminology project. Probably not, in case this might be called over
@@ -1588,20 +1637,20 @@ class Store(models.Model, CachedTreeItem, base.TranslationStore):
         being available in `unit`. Let's look into replacing such members with
         something saner (#3895).
         """
-        create_subs = {}
-
-        # FIXME: extreme implicit hazard
-        if unit._target_updated:
-            create_subs[SubmissionFields.TARGET] = [
-                old_target,
-                unit.target_f,
-            ]
+        create_subs = OrderedDict()
 
         # FIXME: extreme implicit hazard
         if unit._state_updated:
             create_subs[SubmissionFields.STATE] = [
                 old_state,
                 unit.state,
+            ]
+
+        # FIXME: extreme implicit hazard
+        if unit._target_updated:
+            create_subs[SubmissionFields.TARGET] = [
+                old_target,
+                unit.target_f,
             ]
 
         # FIXME: extreme implicit hazard
@@ -1764,30 +1813,11 @@ class Store(models.Model, CachedTreeItem, base.TranslationStore):
 
         return count
 
+    def deserialize(self, data):
+        return StoreDeserialization(self).deserialize(data)
+
     def serialize(self):
-        from django.core.cache import caches
-
-        if self.is_terminology:
-            raise NotImplementedError("Cannot serialize terminology stores")
-
-        cache = caches["exports"]
-        rev = self.get_max_unit_revision()
-        path = self.pootle_path
-
-        ret = cache.get(path, version=rev)
-        if not ret:
-            storeclass = self.get_file_class()
-            store = self.convert(storeclass)
-            if hasattr(store, "updateheader"):
-                # FIXME We need those headers on import
-                # However some formats just don't support setting metadata
-                store.updateheader(add=True, X_Pootle_Path=path)
-                store.updateheader(add=True, X_Pootle_Revision=rev)
-
-            ret = str(store)
-            cache.set(path, ret, version=rev)
-
-        return ret
+        return StoreSerialization(self).serialize()
 
     def sync(self, update_structure=False, conservative=True,
              user=None, skip_missing=False, only_newer=True):

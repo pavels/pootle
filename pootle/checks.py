@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
 # Copyright (C) Pootle contributors.
@@ -16,7 +15,7 @@ from django.utils.translation import ugettext as _
 TTK_MINIMUM_REQUIRED_VERSION = (1, 13, 0)
 
 # Minimum Django version required for Pootle to run.
-DJANGO_MINIMUM_REQUIRED_VERSION = (1, 8, 12)
+DJANGO_MINIMUM_REQUIRED_VERSION = (1, 8, 13)
 
 # Minimum lxml version required for Pootle to run.
 LXML_MINIMUM_REQUIRED_VERSION = (2, 2, 2, 0)

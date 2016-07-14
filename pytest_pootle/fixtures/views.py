@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
 # Copyright (C) Pootle contributors.
@@ -14,6 +13,7 @@ from collections import OrderedDict
 from datetime import datetime, timedelta
 
 import pytest
+from dateutil.relativedelta import relativedelta
 
 from django.core.urlresolvers import reverse
 
@@ -22,8 +22,8 @@ from pytest_pootle.utils import create_store, get_test_uids
 
 
 DAY_AGO = (datetime.now() - timedelta(days=1))
-MONTH_AGO = (datetime.now() - timedelta(days=30))
-TWO_MONTHS_AGO = (datetime.now() - timedelta(days=60))
+MONTH_AGO = (datetime.now() - relativedelta(months=1))
+TWO_MONTHS_AGO = (datetime.now() - relativedelta(months=2))
 
 BAD_VIEW_TESTS = OrderedDict(
     (("/foo/bar", dict(code=301, location="/foo/bar/")),
@@ -186,6 +186,7 @@ PROJECT_VIEW_TESTS = OrderedDict(
       {"dir_path": "subdir0/",
        "filename": "store3.po"}),
      ("export", {}),
+     ("export_limit", {"export_limit": True}),
      ("export_directory",
       {"dir_path": "subdir0/"}),
      ("export_store",
@@ -218,6 +219,7 @@ TP_VIEW_TESTS = OrderedDict(
      ("translate_no_vfolders_in_subdir",
       {"dir_path": "subdir0/subdir1/"}),
      ("export", {}),
+     ("export_limit", {"export_limit": True}),
      ("export_directory",
       {"dir_path": "subdir0/"}),
      ("export_store",
@@ -282,9 +284,14 @@ def get_units_views(request, client, request_users):
 
 
 @pytest.fixture(params=PROJECT_VIEW_TESTS.keys())
-def project_views(request, client, request_users):
+def project_views(request, client, request_users, settings):
     from pootle.core.helpers import SIDEBAR_COOKIE_NAME
     from pootle_project.models import Project
+
+    test_kwargs = PROJECT_VIEW_TESTS[request.param].copy()
+    if test_kwargs.get("export_limit"):
+        settings.POOTLE_EXPORT_VIEW_LIMIT = 10
+        del test_kwargs["export_limit"]
 
     user = request_users["user"]
     client.login(
@@ -294,7 +301,7 @@ def project_views(request, client, request_users):
     test_type = request.param.split("_")[0]
     project = Project.objects.get(code="project0")
     kwargs = {"project_code": project.code, "dir_path": "", "filename": ""}
-    kwargs.update(PROJECT_VIEW_TESTS[request.param])
+    kwargs.update(test_kwargs)
     view_name = "pootle-project-%s" % test_type
     client.cookies[SIDEBAR_COOKIE_NAME] = json.dumps({"foo": "bar"})
     response = client.get(reverse(view_name, kwargs=kwargs))
@@ -302,9 +309,14 @@ def project_views(request, client, request_users):
 
 
 @pytest.fixture(params=TP_VIEW_TESTS.keys())
-def tp_views(request, client, request_users):
+def tp_views(request, client, request_users, vfolders, settings):
     from pootle.core.helpers import SIDEBAR_COOKIE_NAME
     from pootle_translationproject.models import TranslationProject
+
+    test_kwargs = TP_VIEW_TESTS[request.param].copy()
+    if test_kwargs.get("export_limit"):
+        settings.POOTLE_EXPORT_VIEW_LIMIT = 10
+        del test_kwargs["export_limit"]
 
     tp_view_test_names = request.param
     user = request_users["user"]
@@ -317,7 +329,7 @@ def tp_views(request, client, request_users):
         "language_code": tp.language.code,
         "dir_path": "",
         "filename": ""}
-    kwargs.update(TP_VIEW_TESTS[tp_view_test_names])
+    kwargs.update(test_kwargs)
     client.cookies[SIDEBAR_COOKIE_NAME] = json.dumps({"foo": "bar"})
     if kwargs.get("filename"):
         tp_view = "%s-store" % tp_view

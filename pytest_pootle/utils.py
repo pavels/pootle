@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
 # Copyright (C) Pootle contributors.
@@ -11,6 +10,7 @@
 
 import io
 import json
+from uuid import uuid4
 
 from translate.storage.factory import getclass
 
@@ -39,6 +39,22 @@ STRING_UNIT = """
 msgid "%(src)s"
 msgstr "%(target)s"
 """
+
+
+def setup_store(pootle_path):
+    from pootle.core.url_helpers import split_pootle_path
+    from pootle_translationproject.models import TranslationProject
+
+    from .factories import StoreDBFactory
+
+    (lang_code, proj_code,
+     dir_path, filename) = split_pootle_path(pootle_path)
+    tp = TranslationProject.objects.get(
+        language__code=lang_code, project__code=proj_code)
+    directory = tp.directory.get_relative(dir_path)
+
+    return StoreDBFactory(
+        translation_project=tp, parent=directory, name=filename)
 
 
 def create_store(pootle_path=None, store_revision=None, units=None):
@@ -123,3 +139,17 @@ def get_translated_storefile(store, pootle_path=None):
                            X_Pootle_Revision=store.get_max_unit_revision())
 
     return filestore
+
+
+def add_store_fs(store, fs_path, synced=False):
+    from pootle_fs.models import StoreFS
+
+    if synced:
+        return StoreFS.objects.create(
+            store=store,
+            path=fs_path,
+            last_sync_hash=uuid4().hex,
+            last_sync_revision=store.get_max_unit_revision())
+    return StoreFS.objects.create(
+        store=store,
+        path=fs_path)

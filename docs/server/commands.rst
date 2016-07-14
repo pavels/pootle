@@ -316,6 +316,27 @@ directly on the file system.
    deleted from the database. Handle with care!
 
 
+.. django-admin:: list_serializers
+
+list_serializers
+^^^^^^^^^^^^^^^^
+
+  .. versionadded:: 2.8.0
+
+List the installed serializers and deserializers on your system.
+
+Available options:
+
+.. django-admin-option:: -m, --model
+
+List serializers for specified model. The model should be expressed as a
+contenttype label - eg ``app_name``.``model_name``
+
+.. django-admin-option:: -d, --deserializers
+
+List available deserializers set up for our system.
+
+
 .. django-admin:: list_languages
 
 list_languages
@@ -492,6 +513,65 @@ in specific format.
 
 This command can be used by developers to check if all data kept after
 migrations or stats calculating algorithm was changed.
+
+
+
+.. django-admin:: config
+
+config
+^^^^^^
+
+.. versionadded:: 2.8
+
+Gets, sets, lists, appends and clears pootle configuration settings.
+
+.. django-admin-option:: content_type
+
+  Optional positional argument to specify a model to manage configuration for.
+
+
+.. django-admin-option:: object
+
+  Optional positional argument to specify the primary key of an object to
+  manage configuration for. You can use a field other than the primary key by
+  specifying :option:`-o`, but the field must be unique for the
+  request object when doing so.
+
+
+.. django-admin-option:: -o <field>, --object-field <field>
+
+  Specify a field other than the primary key when specifying an object. It must
+  be unique to the object specified.
+
+
+.. django-admin-option:: -g <key>, --get <key>
+
+  Get value for specified key.
+
+
+.. django-admin-option:: -l <key>, --list <key>
+
+  List values for specified key(s). This option can be specified multiple times.
+
+
+.. django-admin-option:: -s <key> <value>, --set <key> <value>
+
+  Set value for specified key. The key must be unique or not exist already.
+
+
+.. django-admin-option:: -a <key> <value>, --append <key> <value>
+
+  Append value for specified key.
+
+
+.. django-admin-option:: -c <key>, --clear <key>
+
+  Clear value(s) for specified key.
+
+
+.. django-admin-option:: -j, --json
+
+  Treat data as JSON when getting, setting, or appending values.
 
 
 .. _commands#translation-memory:
@@ -966,7 +1046,7 @@ servers that can be reverse proxied to a proper HTTP web server such as nginx
 or lighttpd.
 
 There are many more options such as `uWSGI
-<http://uwsgi-docs.readthedocs.org/en/latest/WSGIquickstart.html>`_, `Gunicorn
+<https://uwsgi-docs.readthedocs.io/en/latest/WSGIquickstart.html>`_, `Gunicorn
 <http://gunicorn.org/>`_, etc.
 
 
@@ -1064,6 +1144,6 @@ from a bash script that creates the correct environment for your command to run
 from.  Call this script then from cron. It shouldn't be necessary to specify
 the settings file for Pootle — it should automatically be detected.
 
-.. _django-assets: http://django-assets.readthedocs.org/en/latest/
+.. _django-assets: https://django-assets.readthedocs.io/en/latest/
 
 .. _webassets: http://elsdoerfer.name/docs/webassets/

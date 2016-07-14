@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
 # Copyright (C) Pootle contributors.
@@ -11,7 +10,7 @@ import logging
 
 from translate.storage.factory import getclass
 
-from django.utils.translation import ugettext as _
+from django.utils.translation import ugettext_lazy as _
 
 from pootle_app.models.permissions import check_user_permission
 from pootle_statistics.models import SubmissionTypes
@@ -44,7 +43,7 @@ def import_file(file, user=None):
     rev = int(rev)
 
     try:
-        store, created = Store.objects.get_or_create(pootle_path=pootle_path)
+        store, __ = Store.objects.get_or_create(pootle_path=pootle_path)
     except Exception as e:
         raise FileImportError(_("Could not create '%s'. Missing "
                                 "Project/Language? (%s)", (file.name, e)))

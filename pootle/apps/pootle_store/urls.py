@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
 # Copyright (C) Pootle contributors.
@@ -43,7 +42,7 @@ urlpatterns = [
         views.UnitEditJSON.as_view(),
         name='pootle-xhr-units-edit'),
     url(r'^xhr/units/(?P<uid>[0-9]+)/timeline/?$',
-        views.timeline,
+        views.UnitTimelineJSON.as_view(),
         name='pootle-xhr-units-timeline'),
 
     url(r'^xhr/units/(?P<uid>[0-9]+)/suggestions/?$',

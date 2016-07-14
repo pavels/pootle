@@ -180,7 +180,8 @@ Update the translations from the `Pootle server
 
    .. code-block:: console
 
-       $ make mo  # Build all LINGUAS enabled languages
+       $ ./setup.py build_mo          # Build all LINGUAS enabled languages
+       $ ./setup.py build_mo --check  # Not all of these are errors
 
 
 Create release notes
@@ -255,6 +256,17 @@ When in development we use 'alpha' with ``extra`` of 0.  The first release of a
 never just ``2.6``.
 
 
+Install nvm
+-----------
+
+Most likely your system will provide a nodejs version older than the one that
+is required. nvm is a tool that allows to quickly install and switch nodejs
+versions.
+
+Follow the `nvm installation instructions
+<https://github.com/creationix/nvm#installation>`_.
+
+
 Build the package
 -----------------
 
@@ -264,14 +276,16 @@ checkout run:
 .. code-block:: console
 
     $ mkvirtualenv build-pootle-release
+    (build-pootle-release)$ nvm install 0.12  # Use nodejs 0.12
+    (build-pootle-release)$ pip install --upgrade pip
     (build-pootle-release)$ pip install -r requirements/build.txt
     (build-pootle-release)$ export PYTHONPATH="${PYTHONPATH}:`pwd`"
     (build-pootle-release)$ export POOTLE_SETTINGS=~/.pootle/pootle_build.conf
-    (build-pootle-release)$ make mo-all  # If we are shipping an RC
+    (build-pootle-release)$ ./setup.py build_mo --all  # If we are shipping an RC
+    (build-pootle-release)$ make clean
     (build-pootle-release)$ make build
     (build-pootle-release)$ deactivate
     $ unset POOTLE_SETTINGS
-    $ rmvirtualenv build-pootle-release
 
 
 This will create a tarball in :file:`dist/` which you can use for further
@@ -290,6 +304,7 @@ the new release using:
 .. code-block:: console
 
     $ mkvirtualenv test-pootle-release
+    (test-pootle-release)$ pip install --upgrade pip
     (test-pootle-release)$ pip install dist/Pootle-$version.tar.bz2
     (test-pootle-release)$ pip install MySQL-python
     (test-pootle-release)$ pootle init
@@ -470,7 +485,14 @@ Run the following to publish the package on PyPI:
 
 .. code-block:: console
 
-    $ make publish-pypi
+    $ workon build-pootle-release
+    (build-pootle-release)$ nvm install 0.12  # Use nodejs 0.12
+    (build-pootle-release)$ export PYTHONPATH="${PYTHONPATH}:`pwd`"
+    (build-pootle-release)$ export POOTLE_SETTINGS=~/.pootle/pootle_build.conf
+    (build-pootle-release)$ make publish-pypi
+    (build-pootle-release)$ deactivate
+    $ unset POOTLE_SETTINGS
+    $ rmvirtualenv build-pootle-release
 
 
 .. _releasing#create-github-release:

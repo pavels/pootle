@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
 # Copyright (C) Pootle contributors.
@@ -14,17 +13,18 @@ import factory
 from django.utils import timezone
 
 import pootle_store
+from pootle.core.utils.timezone import make_aware
 
 
 class ScoreLogFactory(factory.django.DjangoModelFactory):
-    creation_time = timezone.now()
+    creation_time = make_aware(timezone.now())
 
     class Meta(object):
         model = 'pootle_statistics.ScoreLog'
 
 
 class SubmissionFactory(factory.django.DjangoModelFactory):
-    creation_time = timezone.now()
+    creation_time = make_aware(timezone.now())
 
     class Meta(object):
         model = 'pootle_statistics.Submission'
@@ -125,6 +125,7 @@ class StoreDBFactory(factory.django.DjangoModelFactory):
 
     parent = factory.LazyAttribute(
         lambda s: s.translation_project.directory)
+    obsolete = False
 
     @factory.lazy_attribute
     def pootle_path(self):

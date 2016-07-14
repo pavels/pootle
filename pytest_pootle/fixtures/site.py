@@ -6,6 +6,7 @@
 # or later license. See the LICENSE file for a copy of the license and the
 # AUTHORS file for copyright and authorship information.
 
+import os
 import tempfile
 
 import pytest
@@ -84,3 +85,35 @@ def translations_directory(request):
     """used by PootleEnv"""
     from django.conf import settings
     settings.POOTLE_TRANSLATION_DIRECTORY = tempfile.mkdtemp()
+
+
+@pytest.fixture(autouse=True)
+def clear_cache(request):
+    """Currently tests only use one cache so this clears all"""
+
+    from django.core.cache import caches
+
+    from django_redis import get_redis_connection
+
+    get_redis_connection('default').flushdb()
+    caches["exports"].clear()
+
+
+@pytest.fixture
+def test_fs():
+    """A convenience fixture for retrieving data from test files"""
+    import pytest_pootle
+
+    class TestFs(object):
+
+        def path(self, path):
+            return os.path.join(
+                os.path.dirname(pytest_pootle.__file__),
+                path)
+
+        def open(self, paths, *args, **kwargs):
+            if isinstance(paths, (list, tuple)):
+                paths = os.path.join(*paths)
+            return open(self.path(paths), *args, **kwargs)
+
+    return TestFs()

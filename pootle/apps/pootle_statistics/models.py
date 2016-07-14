@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
 # Copyright (C) Pootle contributors.
@@ -14,12 +13,10 @@ from django.db import models
 from django.db.models import F
 from django.template.defaultfilters import truncatechars
 from django.utils.functional import cached_property
-from django.utils.html import format_html
 from django.utils.translation import ugettext_lazy as _
 
 from pootle.core.log import SCORE_CHANGED, log
 from pootle.core.utils import dateformat
-from pootle.core.utils.json import jsonify
 from pootle_misc.checks import check_names
 from pootle_store.fields import to_python
 from pootle_store.util import FUZZY, TRANSLATED, UNTRANSLATED
@@ -225,10 +222,6 @@ class Submission(models.Model):
 
         return True
 
-    def as_json(self):
-        """Returns a json describing the submission."""
-        return jsonify(self.get_submission_info())
-
     def get_submission_info(self):
         """Returns a dictionary describing the submission.
 
@@ -323,27 +316,6 @@ class Submission(models.Model):
             result['translation_action_type'] = translation_action_type
 
         return result
-
-    def get_suggestion_description(self):
-        """Returns a suggestion-related descriptive message for the submission.
-
-        If there's no suggestion activity linked with the submission, `None` is
-        returned instead.
-        """
-        if self.type not in SubmissionTypes.SUGGESTION_TYPES:
-            return None
-
-        sugg_user = self.suggestion.user
-        author = format_html(u'<a href="{}">{}</a>',
-                             sugg_user.get_absolute_url(),
-                             sugg_user.display_name)
-        return {
-            SubmissionTypes.SUGG_ADD: _(u'Added suggestion'),
-            SubmissionTypes.SUGG_ACCEPT: _(u'Accepted suggestion from %s',
-                                           author),
-            SubmissionTypes.SUGG_REJECT: _(u'Rejected suggestion from %s',
-                                           author),
-        }.get(self.type, None)
 
     def save(self, *args, **kwargs):
         super(Submission, self).save(*args, **kwargs)
@@ -703,9 +675,8 @@ class ScoreLog(models.Model):
         def get_sugg_accepted():
             suggester = self.submission.suggestion.user.pk
             reviewer = self.submission.submitter.pk
-            if suggester != reviewer:
-                if self.submission.old_value == '':
-                    return translated_words, None
+            if suggester != reviewer and self.submission.old_value == '':
+                return translated_words, None
 
             return None, None
 

@@ -8,6 +8,11 @@
 
 import $ from 'jquery';
 import _ from 'underscore';
+import React from 'react';
+import ReactDOM from 'react-dom';
+
+import TimeSince from 'components/TimeSince';
+import ReactRenderer from 'utils/ReactRenderer';
 
 // jQuery plugins
 import 'jquery-caret';
@@ -21,14 +26,17 @@ import 'jquery-utils';
 import autosize from 'autosize';
 import cx from 'classnames';
 import Levenshtein from 'levenshtein';
+import mousetrap from 'mousetrap';
 import assign from 'object-assign';
-import 'shortcut';
 
 import StatsAPI from 'api/StatsAPI';
 import UnitAPI from 'api/UnitAPI';
 import cookie from 'utils/cookie';
 import fetch from 'utils/fetch';
 import linkHashtags from 'utils/linkHashtags';
+
+import SuggestionFeedbackForm from './components/SuggestionFeedbackForm';
+import UploadTimeSince from './components/UploadTimeSince';
 
 import captcha from '../captcha';
 import { UnitSet } from '../collections';
@@ -232,6 +240,16 @@ PTL.editor = {
       e.stopPropagation();
       this.acceptSuggestion(e.currentTarget.dataset.suggId);
     });
+    $(document).on('click', '.js-suggestion-toggle',
+      (e) => this.toggleSuggestion(e, { canHide: true }));
+
+    if (this.settings.canReview) {
+      $(document).on('click', '.js-user-suggestion',
+        (e) => this.toggleSuggestion(e, { canHide: false }));
+    }
+
+    $(document).on('click', '.js-translate-lightbox', () => this.closeSuggestion());
+
     $(document).on('click', '#js-toggle-timeline', (e) => this.toggleTimeline(e));
     $(document).on('click', '.js-toggle-check', (e) => {
       this.toggleCheck(e.currentTarget.dataset.checkId);
@@ -274,7 +292,7 @@ PTL.editor = {
 
     /* Confirmation prompt */
     window.addEventListener('beforeunload', (e) => {
-      if (PTL.editor.isUnitDirty) {
+      if (PTL.editor.isUnitDirty || PTL.editor.isSuggestionFeedbackFormDirty) {
         // eslint-disable-next-line no-param-reassign
         e.returnValue = gettext(
           'You have unsaved changes in this string. Navigating away will discard those changes.'
@@ -283,21 +301,29 @@ PTL.editor = {
     });
 
     /* Bind hotkeys */
-    shortcut.add('ctrl+return', () => {
+    const hotkeys = mousetrap(document.body);
+
+    // FIXME: move binding to `SuggestionFeedbackForm` component
+    hotkeys.bind('esc', () => {
+      if (this.selectedSuggestionId !== undefined) {
+        this.closeSuggestion();
+      }
+    });
+    hotkeys.bind('ctrl+return', () => {
       if (this.isSuggestMode()) {
         this.handleSuggest();
       } else {
         this.handleSubmit();
       }
     });
-    shortcut.add('ctrl+space', () => this.toggleState());
-    shortcut.add('ctrl+shift+space', (e) => this.toggleSuggestMode(e));
+    hotkeys.bind('ctrl+space', () => this.toggleState());
+    hotkeys.bind('ctrl+shift+space', (e) => this.toggleSuggestMode(e));
 
-    shortcut.add('ctrl+up', () => this.gotoPrev());
-    shortcut.add('ctrl+,', () => this.gotoPrev());
+    hotkeys.bind('ctrl+up', () => this.gotoPrev());
+    hotkeys.bind('ctrl+,', () => this.gotoPrev());
 
-    shortcut.add('ctrl+down', () => this.gotoNext({ isSubmission: false }));
-    shortcut.add('ctrl+.', () => this.gotoNext({ isSubmission: false }));
+    hotkeys.bind('ctrl+down', () => this.gotoNext({ isSubmission: false }));
+    hotkeys.bind('ctrl+.', () => this.gotoNext({ isSubmission: false }));
 
     if (navigator.platform.toUpperCase().indexOf('MAC') >= 0) {
       // Optimize string join with '<br/>' as separator
@@ -315,7 +341,7 @@ PTL.editor = {
       );
     }
 
-    shortcut.add('ctrl+shift+n', (e) => this.unitIndex(e));
+    hotkeys.bind('ctrl+shift+n', (e) => this.unitIndex(e));
 
     /* XHR activity indicator */
     $(document).ajaxStart(() => {
@@ -354,6 +380,11 @@ PTL.editor = {
       let isInitial = true;
       let uId = 0;
       let initialOffset = 0;
+
+      if (this.selectedSuggestionId !== undefined) {
+        this.closeSuggestion({ checkIfCanNavigate: false });
+      }
+      ReactRenderer.unmountComponents();
 
       // Walk through known filtering criterias and apply them to the editor object
 
@@ -577,7 +608,7 @@ PTL.editor = {
   },
 
   canNavigate() {
-    if (this.isUnitDirty) {
+    if (this.isUnitDirty || this.isSuggestionFeedbackFormDirty) {
       return window.confirm(  // eslint-disable-line no-alert
         gettext(
           'You have unsaved changes in this string. Navigating away will discard those changes.'
@@ -754,7 +785,7 @@ PTL.editor = {
   toggleState() {
     // `blur()` prevents a double-click effect if the checkbox was
     // previously clicked using the mouse
-    $('input.fuzzycheck').blur().click();
+    $('input.fuzzycheck:visible').blur().click();
   },
 
   /* Updates unit textarea and input's `default*` values. */
@@ -1212,7 +1243,7 @@ PTL.editor = {
       if (unitGroups.length !== 1) {
         rows.push(
           '<tr class="delimiter-row"><td colspan="2">' +
-            `<div class="hd"><h2>${unitGroup.path}</h2></div>` +
+            `<div class="hd"><h2>${_.escape(unitGroup.path)}</h2></div>` +
           '</td></tr>'
         );
       }
@@ -1343,7 +1374,7 @@ PTL.editor = {
                          this.initialOffset === 0 && !this.units.hasPrev());
     this.updateNavButton(this.$navNext, !this.units.hasNext());
 
-    this.unitCountEl.textContent = this.units.total;
+    this.unitCountEl.textContent = this.units.frozenTotal;
 
     const currentUnit = this.units.getCurrent();
     if (currentUnit !== undefined) {
@@ -1417,16 +1448,18 @@ PTL.editor = {
     let { unitGroups } = data;
     let prependUnits = false;
 
-    if (!unitGroups.length) {
+    if (!unitGroups.length && !this.units.uIds.length) {
       this.noResults();
       return false;
     }
     if (this.offset === 0) {
       this.units.reset();
       this.units.uIds = [];
+      this.units.frozenTotal = total;
     }
     if (this.initialOffset === -1) {
       this.initialOffset = start;
+      this.units.frozenTotal = total;
     } else if (start < this.initialOffset) {
       this.initialOffset = start;
       prependUnits = true;
@@ -1491,7 +1524,7 @@ PTL.editor = {
   },
 
   /* Pushes translation submissions and moves to the next unit */
-  handleSubmit() {
+  handleSubmit(comment = '') {
     const el = document.querySelector('input.submit');
     const newTranslation = $('.js-translation-area')[0].value;
     const suggestions = $('.js-user-suggestion').map(function getSuggestions() {
@@ -1533,6 +1566,15 @@ PTL.editor = {
 
     el.disabled = true;
 
+    // Check if we used a suggestion
+    if (this.selectedSuggestionId !== undefined) {
+      const suggData = {
+        suggestion: this.selectedSuggestionId,
+        comment,
+      };
+      assign(body, suggData);
+    }
+
     UnitAPI.addTranslation(this.units.getCurrent().id, body)
       .then(
         (data) => this.processSubmission(data),
@@ -1541,6 +1583,11 @@ PTL.editor = {
   },
 
   processSubmission(data) {
+    if (this.selectedSuggestionId !== undefined) {
+      this.processAcceptSuggestion(data, this.selectedSuggestionId);
+      return;
+    }
+
     // FIXME: handle this via events
     const translations = $('.js-translation-area').map((i, el) => $(el).val())
                                                   .get();
@@ -1685,24 +1732,29 @@ PTL.editor = {
 
   /* Loads the editor on a index */
   gotoIndex(e) {
-    if (e.which === 13) { // Enter key
-      e.preventDefault();
-      const index = parseInt(this.unitIndexEl.textContent, 10) - 1;
-      if (!isNaN(index)) {
-        // if index is outside of current uids clear units first
-        if (index < this.initialOffset || index >= this.getOffsetOfLastUnit()) {
-          this.initialOffset = -1;
-          this.offset = 0;
-          this.offsetRequested = index + 1;
-          $.history.load(utils.updateHashPart(
-            'offset', this.getStartOfChunk(index), ['unit'])
-          );
-        } else if (index >= 0 && index <= this.units.total) {
-          const uId = this.units.uIds[(index - this.initialOffset)];
-          const newHash = utils.updateHashPart('unit', uId);
-          $.history.load(newHash);
-        }
-      }
+    if (e.which !== 13) { // Enter key
+      return;
+    }
+
+    e.preventDefault();
+    const index = parseInt(this.unitIndexEl.textContent, 10) - 1;
+    if (isNaN(index)) {
+      return;
+    }
+
+    // if index is outside of current uids clear units first
+    if (index < this.initialOffset || index >= this.getOffsetOfLastUnit()) {
+      this.initialOffset = -1;
+      this.offset = 0;
+      this.offsetRequested = index + 1;
+      const newHash = utils.updateHashPart('offset',
+                                           this.getStartOfChunk(index),
+                                           ['unit']);
+      $.history.load(newHash);
+    } else if (index >= 0 && index <= this.units.total) {
+      const uId = this.units.uIds[(index - this.initialOffset)];
+      const newHash = utils.updateHashPart('unit', uId);
+      $.history.load(newHash);
     }
   },
 
@@ -2054,8 +2106,17 @@ PTL.editor = {
         $(data.timeline).hide().prependTo('#extras-container')
                         .slideDown(1000, 'easeOutQuad');
       }
-
-      helpers.updateRelativeDates();
+      [...document.querySelectorAll('.js-mount-timesince')].forEach((el, i) => {
+        const props = {
+          title: data.entries_group[i].display_datetime,
+          dateTime: data.entries_group[i].iso_datetime,
+        };
+        if (data.entries_group[i].via_upload) {
+          ReactRenderer.render(<UploadTimeSince {...props} />, el);
+        } else {
+          ReactRenderer.render(<TimeSince {...props} />, el);
+        }
+      });
 
       $('.timeline-field-body').filter(':not([dir])').bidi();
       $('#js-show-timeline').addClass('selected');
@@ -2090,22 +2151,27 @@ PTL.editor = {
       const $element = $(this.focused);
       // set only if the textarea is empty
       if ($element.val() === '') {
+        // save unit editor state to restore it after autofill changes
+        const isUnitDirty = PTL.editor.isUnitDirty;
         const text = results[0].target;
         $element.val(text).trigger('input');
         $element.caret(text.length, text.length);
         this.goFuzzy();
+        PTL.editor.isUnitDirty = isUnitDirty;
       }
     }
 
     for (let i = 0; i < results.length && i < 3; i++) {
       const result = results[i];
-      let fullname;
+      let fullname = result.fullname;
       if (result.username === 'nobody') {
         fullname = gettext('some anonymous user');
       } else if (!result.fullname) {
         fullname = result.username ? result.username : gettext('someone');
       }
       result.fullname = _.escape(fullname);
+      result.project = _.escape(result.project);
+      result.path = _.escape(result.path);
 
       filtered.push(result);
     }
@@ -2140,13 +2206,14 @@ PTL.editor = {
     const src = store.get('source_lang');
     const tgt = store.get('target_lang');
     const sText = unit.get('source')[0];
+
+    if (!sText.length || src === tgt) {
+      return;
+    }
+
     const pStyle = store.get('project_style');
     let tmUrl = `${this.settings.tmUrl}${src}/${tgt}/unit/` +
       `?source=${encodeURIComponent(sText)}`;
-
-    if (!sText.length) {
-      return;
-    }
 
     if (pStyle.length && pStyle !== 'standard') {
       tmUrl += `&style=${pStyle}`;
@@ -2155,7 +2222,7 @@ PTL.editor = {
     fetch({ url: tmUrl, crossDomain: true })
       .then(
         (data) => this.handleTmResults(data, store, unit),
-        this.error
+        (xhr, s) => console.error(`HTTP ${xhr.status} (${s}): ${tmUrl}`)
       );
   },
 
@@ -2181,8 +2248,12 @@ PTL.editor = {
 
 
   /* Rejects a suggestion */
-  rejectSuggestion(suggId) {
-    UnitAPI.rejectSuggestion(this.units.getCurrent().id, suggId)
+  handleRejectSuggestion(suggId, { requestData = {} } = {}) {
+    this.rejectSuggestion(suggId, { requestData });
+  },
+
+  rejectSuggestion(suggId, { requestData = {} } = {}) {
+    UnitAPI.rejectSuggestion(this.units.getCurrent().id, suggId, requestData)
       .then(
         (data) => this.processRejectSuggestion(data, suggId),
         this.error
@@ -2195,6 +2266,7 @@ PTL.editor = {
     }
 
     $(`#suggestion-${suggId}`).fadeOut(200, function handleRemove() {
+      PTL.editor.closeSuggestion({ checkIfCanNavigate: false });
       $(this).remove();
 
       // Go to the next unit if there are no more suggestions left
@@ -2206,26 +2278,43 @@ PTL.editor = {
 
 
   /* Accepts a suggestion */
-  acceptSuggestion(suggId, { skipToNext = false } = {}) {
-    UnitAPI.acceptSuggestion(this.units.getCurrent().id, suggId)
-      .then(
-        (data) => this.processAcceptSuggestion(data, suggId, skipToNext),
-        this.error
-      );
+  handleAcceptSuggestion(
+    suggId, { requestData = {}, isSuggestionChanged = false } = {}
+  ) {
+    if (isSuggestionChanged) {
+      const area = document.querySelector('.js-translation-area');
+      area.value = decodeEntities(requestData.translation);
+      this.undoFuzzyBox();
+      this.handleSubmit(requestData.comment);
+    } else {
+      this.acceptSuggestion(suggId, { requestData });
+    }
+  },
+
+  acceptSuggestion(suggId, { requestData = {}, skipToNext = false } = {}) {
+    UnitAPI.acceptSuggestion(this.units.getCurrent().id, suggId, requestData)
+    .then(
+      (data) => this.processAcceptSuggestion(data, suggId, skipToNext),
+      this.error
+    );
   },
 
   processAcceptSuggestion(data, suggId, skipToNext) {
     // Update target textareas
-    $.each(data.newtargets, (i, target) => {
-      $(`#id_target_f_${i}`).val(target).focus();
-    });
-
-    // Update remaining suggestion's diff
-    $.each(data.newdiffs, (suggestionId, sugg) => {
-      $.each(sugg, (i, target) => {
-        $(`#suggdiff-${suggestionId}-${i}`).html(target);
+    if (data.newtargets !== undefined) {
+      $.each(data.newtargets, (i, target) => {
+        $(`#id_target_f_${i}`).val(target).focus();
       });
-    });
+    }
+
+    if (data.newdiffs !== undefined) {
+      // Update remaining suggestion's diff
+      $.each(data.newdiffs, (suggestionId, sugg) => {
+        $.each(sugg, (i, target) => {
+          $(`#suggdiff-${suggestionId}-${i}`).html(target);
+        });
+      });
+    }
 
     // FIXME: handle this via events
     const translations = $('.js-translation-area').map((i, el) => $(el).val())
@@ -2245,6 +2334,7 @@ PTL.editor = {
     }
 
     $(`#suggestion-${suggId}`).fadeOut(200, function handleRemove() {
+      PTL.editor.closeSuggestion({ checkIfCanNavigate: false });
       $(this).remove();
 
       // Go to the next unit if there are no more suggestions left,
@@ -2312,4 +2402,54 @@ PTL.editor = {
     return true;
   },
 
+  toggleSuggestion(e, { canHide = false } = {}) {
+    e.stopPropagation();
+    const suggestionId = parseInt(e.currentTarget.dataset.suggId, 10);
+    const suggestion = document.getElementById(`suggestion-${suggestionId}`);
+
+    if (this.selectedSuggestionId === undefined) {
+      this.selectedSuggestionId = suggestionId;
+      const props = {
+        suggId: this.selectedSuggestionId,
+        initialSuggestionText: e.currentTarget.dataset.translationAid,
+        localeDir: this.settings.localeDir,
+        onAcceptSuggestion: this.handleAcceptSuggestion.bind(this),
+        onRejectSuggestion: this.handleRejectSuggestion.bind(this),
+        onChange: this.handleSuggestionFeedbackChange.bind(this),
+      };
+      const mountSelector = `.js-mnt-suggestion-feedback-${suggestionId}`;
+      const feedbackMountPoint = document.querySelector(mountSelector);
+      const editorBody = document.querySelector('.js-editor-body .translate-full');
+      suggestion.classList.add('suggestion-expanded');
+      editorBody.classList.add('suggestion-expanded');
+
+      this.isSuggestionFeedbackFormDirty = false;
+      this.suggestionFeedbackForm = ReactDOM.render(
+        <SuggestionFeedbackForm {...props} />,
+        feedbackMountPoint
+      );
+    } else if (canHide) {
+      this.closeSuggestion();
+    }
+  },
+
+  handleSuggestionFeedbackChange(isDirty) {
+    this.isSuggestionFeedbackFormDirty = isDirty;
+  },
+
+  closeSuggestion({ checkIfCanNavigate = true } = {}) {
+    if (this.selectedSuggestionId !== undefined &&
+        (!checkIfCanNavigate || this.canNavigate())) {
+      const suggestion = document.querySelector(`#suggestion-${this.selectedSuggestionId}`);
+      const editorBody = document.querySelector('.js-editor-body .translate-full');
+      const mountSelector = `.js-mnt-suggestion-feedback-${this.selectedSuggestionId}`;
+      const feedbackMountPoint = document.querySelector(mountSelector);
+      editorBody.classList.remove('suggestion-expanded');
+      suggestion.classList.remove('suggestion-expanded');
+      ReactDOM.unmountComponentAtNode(feedbackMountPoint);
+      this.selectedSuggestionId = undefined;
+      this.suggestionFeedbackForm = undefined;
+      this.isSuggestionFeedbackFormDirty = false;
+    }
+  },
 };

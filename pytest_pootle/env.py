@@ -6,6 +6,7 @@
 # or later license. See the LICENSE file for a copy of the license and the
 # AUTHORS file for copyright and authorship information.
 
+import os
 from datetime import datetime, timedelta
 
 
@@ -38,8 +39,8 @@ class PootleTestEnv(object):
     methods = (
         "redis", "case_sensitive_schema", "content_type", "site_root",
         "languages", "site_matrix", "system_users", "permissions",
-        "site_permissions", "tps", "disabled_project", "vfolders",
-        "subdirs", "submissions", "announcements", "terminology")
+        "site_permissions", "tps", "disabled_project",
+        "subdirs", "submissions", "announcements", "terminology", "fs")
 
     def __init__(self, request):
         self.request = request
@@ -151,31 +152,6 @@ class PootleTestEnv(object):
             "utf8_bin",
             "varchar(255)")
 
-        # VirtualFolderTreeItem
-        set_mysql_collation_for_column(
-            apps,
-            cursor,
-            "virtualfolder.VirtualFolderTreeItem",
-            "pootle_path",
-            "utf8_bin",
-            "varchar(255)")
-
-        # VirtualFolder
-        set_mysql_collation_for_column(
-            apps,
-            cursor,
-            "virtualfolder.VirtualFolder",
-            "name",
-            "utf8_bin",
-            "varchar(70)")
-        set_mysql_collation_for_column(
-            apps,
-            cursor,
-            "virtualfolder.VirtualFolder",
-            "location",
-            "utf8_bin",
-            "varchar(255)")
-
     def setup_content_type(self):
         from django.contrib.contenttypes.models import ContentType
 
@@ -222,6 +198,30 @@ class PootleTestEnv(object):
             'administrate',
             'Can administrate a TP',
             pootle_content_type)
+
+    def setup_fs(self):
+        from pytest_pootle.utils import add_store_fs
+
+        from django.conf import settings
+
+        from pootle_project.models import Project
+        from pootle_fs.utils import FSPlugin
+
+        settings.POOTLE_FS_PATH = os.path.join(
+            settings.POOTLE_TRANSLATION_DIRECTORY, "__fs_working_dir__")
+        os.mkdir(settings.POOTLE_FS_PATH)
+
+        project = Project.objects.get(code="project0")
+        project.config["pootle_fs.fs_type"] = "localfs"
+        project.config["pootle_fs.translation_paths"] = {
+            "default": "/<language_code>/<dir_path>/<filename>.<ext>"}
+        project.config["pootle_fs.fs_url"] = "/tmp/path/for/setup"
+        plugin = FSPlugin(project)
+        for store in plugin.resources.stores:
+            add_store_fs(
+                store=store,
+                fs_path=plugin.get_fs_path(store.pootle_path),
+                synced=True)
 
     def setup_languages(self):
         from .fixtures.models.language import _require_language
@@ -360,23 +360,6 @@ class PootleTestEnv(object):
                 tp_dir.obsolete = False
                 tp_dir.save()
                 self._add_stores(tp)
-
-    def setup_vfolders(self):
-        from pytest_pootle.factories import VirtualFolderDBFactory
-
-        VirtualFolderDBFactory(filter_rules="store0.po")
-        VirtualFolderDBFactory(filter_rules="store1.po")
-        VirtualFolderDBFactory(
-            location='/{LANG}/project0/',
-            is_public=False,
-            filter_rules="store0.po")
-        VirtualFolderDBFactory(
-            location='/{LANG}/project0/',
-            is_public=False,
-            filter_rules="store1.po")
-        VirtualFolderDBFactory(
-            location='/language0/project0/',
-            filter_rules="subdir0/store4.po")
 
     def _add_stores(self, tp, n=(3, 2), parent=None):
         from pytest_pootle.factories import StoreDBFactory, UnitDBFactory

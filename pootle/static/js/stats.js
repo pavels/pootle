@@ -21,6 +21,7 @@ import TimeSince from 'components/TimeSince';
 import UserEvent from 'components/UserEvent';
 import cookie from 'utils/cookie';
 
+import VisibilityToggle from './browser/components/VisibilityToggle';
 import msg from './msg';
 
 
@@ -83,6 +84,22 @@ const stats = {
       e.preventDefault();
       this.toggleChecks();
     });
+    $(document).on('click', '.js-toggle-more-checks', (e) => {
+      let count = 0;
+      const data = this.state.checksData;
+      e.preventDefault();
+      $('.js-check').each(function toggleCheck() {
+        const $check = $(this);
+        const code = $check.data('code');
+        if (code in data) {
+          if (count >= 4) {
+            $check.toggle();
+          }
+          count++;
+        }
+      });
+      $(e.target).parent().toggleClass('collapsed');
+    });
     $(document).on('click', '.js-stats-refresh', (e) => {
       e.preventDefault();
       this.refreshStats();
@@ -95,11 +112,16 @@ const stats = {
       }
     });
 
+    if (this.isAdmin && options.hasDisabledItems) {
+      ReactDOM.render(<VisibilityToggle uiLocaleDir={options.uiLocaleDir} />,
+                      document.querySelector('.js-mnt-visibility-toggle'));
+    }
+
     // Retrieve async data if needed
     if (isExpanded) {
       this.loadChecks();
     } else {
-      this.updateUI({});
+      this.updateUI();
     }
   },
 
@@ -213,12 +235,18 @@ const stats = {
   },
 
   updateLastUpdates(statsData) {
+    const luWrapper = document.querySelector('#js-last-updated-wrapper');
+    const hideLastUpdated = !statsData.lastupdated || statsData.lastupdated.mtime === 0;
+    luWrapper.classList.toggle('hide', hideLastUpdated);
     if (statsData.lastupdated) {
-      const lastUpdated = document.querySelector('#js-last-updated .last-updated');
+      const lastUpdated = document.querySelector('#js-last-updated');
       this.renderLastUpdate(lastUpdated, statsData.lastupdated);
     }
+    const laWrapper = document.querySelector('#js-last-action-wrapper');
+    const hideLastAction = !statsData.lastaction || statsData.lastaction.mtime === 0;
+    laWrapper.classList.toggle('hide', hideLastAction);
     if (statsData.lastaction) {
-      const lastAction = document.querySelector('#js-last-action .last-action');
+      const lastAction = document.querySelector('#js-last-action');
       this.renderLastEvent(lastAction, statsData.lastaction);
     }
   },
@@ -422,34 +450,31 @@ const stats = {
     this.$expandIcon.attr('class', `icon-${newClass}-stats`);
     this.$expandIcon.attr('title', newText);
 
-    this.$extraDetails.toggle(isExpanded);
+    this.$extraDetails.toggleClass('expand', isExpanded);
   },
 
   updateChecksUI() {
     const data = this.state.checksData;
+    let count = 0;
 
-    if (data !== null && Object.keys(data).length) {
-      this.$extraDetails.find('.js-checks').each(function updateChecksCategory() {
-        const $cat = $(this);
-        let empty = true;
-
-        $cat.find('.js-check').each(function updateCheck() {
-          const $check = $(this);
-          const code = $(this).data('code');
-          if (code in data) {
-            empty = false;
-            $check.show();
-            $check.find('.check-count .check-data').html(data[code]);
-          } else {
-            $check.hide();
-          }
-        });
-
-        $cat.toggle(!empty);
-      });
-
-      $('#js-stats-checks').show();
+    if (data === null || !Object.keys(data).length) {
+      return;
     }
+
+    this.$extraDetails.find('.js-check').each(function updateCheck() {
+      const $check = $(this);
+      const code = $(this).data('code');
+      if (code in data) {
+        count++;
+        $check.toggle(count < 5);
+        $check.find('.check-count .check-data').html(data[code]);
+      } else {
+        $check.hide();
+      }
+    });
+
+    $('.js-more-checks').addClass('collapsed').toggle(count >= 5);
+    $('#js-stats-checks').show();
   },
 
   updateUI() {
